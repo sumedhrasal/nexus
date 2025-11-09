@@ -20,9 +20,9 @@ class BaseEntity:
     def __post_init__(self):
         """Set defaults."""
         if self.created_at is None:
-            self.created_at = datetime.utcnow()
+            self.created_at = datetime.now()
         if self.updated_at is None:
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now()
 
 
 @dataclass

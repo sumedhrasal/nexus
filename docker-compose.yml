@@ -27,10 +27,11 @@ services:
     environment:
       QDRANT__SERVICE__GRPC_PORT: 6334
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      test: timeout 5 bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7.2-alpine
@@ -48,6 +49,7 @@ services:
 
   ollama:
     image: ollama/ollama:latest
+    profiles: ["with-ollama"]
     container_name: nexus-ollama
     ports:
       - "11434:11434"
@@ -63,25 +65,25 @@ services:
       start_period: 60s
 
   # Ollama model downloader (runs once, then exits)
-  ollama-setup:
-    image: ollama/ollama:latest
-    container_name: nexus-ollama-setup
-    depends_on:
-      ollama:
-        condition: service_healthy
-    volumes:
-      - ollama_data:/root/.ollama
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
-    command: >
-      sh -c "
-        echo 'Pulling nomic-embed-text model...' &&
-        ollama pull nomic-embed-text &&
-        echo 'Pulling llama3.2 model...' &&
-        ollama pull llama3.2 &&
-        echo 'Models downloaded successfully!'
-      "
-    restart: "no"
+  # ollama-setup:
+  #   image: ollama/ollama:latest
+  #   container_name: nexus-ollama-setup
+  #   depends_on:
+  #     ollama:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   environment:
+  #     - OLLAMA_HOST=http://ollama:11434
+  #   command: >
+  #     sh -c "
+  #       echo 'Pulling nomic-embed-text model...' &&
+  #       ollama pull nomic-embed-text &&
+  #       echo 'Pulling llama3.2 model...' &&
+  #       ollama pull llama3.2 &&
+  #       echo 'Models downloaded successfully!'
+  #     "
+  #   restart: "no"
 
   api:
     build:
@@ -94,7 +96,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
       QDRANT_URL: http://qdrant:6333
       REDIS_URL: redis://redis:6379
-      OLLAMA_URL: http://ollama:11434
+      # OLLAMA_URL: http://ollama:11434
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-dummy-key-replace-later}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
@@ -112,10 +115,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
-      ollama-setup:
-        condition: service_completed_successfully
+      # ollama:
+      #   condition: service_healthy
+      # ollama-setup:
+      #   condition: service_completed_successfully
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

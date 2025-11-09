@@ -11,9 +11,6 @@ from qdrant_client.models import (
     FieldCondition,
     MatchValue,
     ScoredPoint,
-    SearchRequest,
-    Prefetch,
-    Query,
 )
 
 from app.config import settings

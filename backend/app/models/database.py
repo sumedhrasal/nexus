@@ -16,7 +16,7 @@ class Organization(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
 
     # Relationships
     collections = relationship("Collection", back_populates="organization", cascade="all, delete-orphan")
@@ -33,7 +33,7 @@ class APIKey(Base):
     key_hash = Column(String(255), unique=True, nullable=False, index=True)
     name = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
     last_used_at = Column(DateTime, nullable=True)
 
     # Relationships
@@ -50,8 +50,8 @@ class Collection(Base):
     name = Column(String(255), nullable=False)
     embedding_provider = Column(String(50), nullable=False, default="ollama")  # ollama, gemini, openai
     vector_dimension = Column(Integer, nullable=False, default=768)  # 768, 1536, 3072
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
 
     # Relationships
     organization = relationship("Organization", back_populates="collections")
@@ -69,9 +69,9 @@ class Entity(Base):
     entity_id = Column(String(512), nullable=False)  # Source-specific ID
     entity_type = Column(String(50), nullable=False)  # file, email, page, etc.
     content_hash = Column(String(64), nullable=False)  # SHA256 hash for change detection
-    metadata = Column(JSON, nullable=True)  # Flexible metadata storage
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    entity_metadata = Column(JSON, nullable=True)  # Flexible metadata storage (renamed from metadata)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
 
     # Relationships
     collection = relationship("Collection", back_populates="entities")
@@ -95,8 +95,8 @@ class SearchAnalytics(Base):
     cache_hit = Column(Boolean, nullable=False, default=False)
     provider_used = Column(String(50), nullable=True)  # Which provider was used
     cost_usd = Column(Float, nullable=False, default=0.0)
-    metadata = Column(JSON, nullable=True)  # Additional metadata (filters, etc.)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    search_metadata = Column(JSON, nullable=True)  # Additional metadata (filters, etc.) - renamed from metadata
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
 
     # Relationships
     collection = relationship("Collection", back_populates="search_analytics")
