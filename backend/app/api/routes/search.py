@@ -66,14 +66,14 @@ async def search_collection(
             filters=request.filters
         )
 
-        # Format results
+        # Format results - search_results is already a list of dicts
         results = [
             SearchResult(
-                entity_id=hit.payload["entity_id"],
-                content=hit.payload["content"],
-                title=hit.payload.get("title"),
-                score=hit.score,
-                metadata=hit.payload.get("metadata", {})
+                entity_id=hit["entity_id"],
+                content=hit["content"],
+                title=hit.get("title"),
+                score=hit["score"],
+                metadata=hit.get("metadata", {})
             )
             for hit in search_results
         ]

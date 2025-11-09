@@ -201,7 +201,16 @@ class QdrantStorage:
 
         try:
             info = await self.client.get_collection(collection_name=collection_name)
-            return info.points_count
+            # Handle different qdrant-client versions
+            if hasattr(info, 'points_count'):
+                return info.points_count
+            elif hasattr(info, 'vectors_count'):
+                return info.vectors_count
+            elif isinstance(info, dict):
+                return info.get('points_count', info.get('vectors_count', 0))
+            else:
+                logger.warning(f"Unknown collection info format: {type(info)}")
+                return 0
         except Exception as e:
             logger.error(f"Failed to count points in {collection_name}: {e}")
             return 0

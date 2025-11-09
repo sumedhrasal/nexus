@@ -12,7 +12,7 @@ class OllamaProvider(BaseProvider):
 
     Uses:
     - nomic-embed-text for embeddings (768 dimensions)
-    - llama3.2 for text generation
+    - llama3.1 for text generation
     """
 
     def __init__(self, base_url: Optional[str] = None):
@@ -23,9 +23,15 @@ class OllamaProvider(BaseProvider):
         """
         super().__init__(name="ollama")
         self.base_url = base_url or settings.ollama_url
+        # Replace host.docker.internal with IPv4 address to avoid IPv6 connection issues
+        if "host.docker.internal" in self.base_url:
+            self.base_url = self.base_url.replace("host.docker.internal", "192.168.65.254")
         self.embed_model = "nomic-embed-text"  # 768d, fast, good quality
-        self.llm_model = "llama3.2"  # Fast 3B parameter model
-        self.client = httpx.AsyncClient(timeout=60.0)
+        self.llm_model = "llama3.1:8b"  # Llama 3.1 8B model
+        self.client = httpx.AsyncClient(
+            timeout=60.0,
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+        )
         self.dimension = 768
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
@@ -55,7 +61,7 @@ class OllamaProvider(BaseProvider):
         return embeddings
 
     async def generate(self, prompt: str, system: Optional[str] = None) -> str:
-        """Generate text using llama3.2.
+        """Generate text using llama3.1.
 
         Args:
             prompt: User prompt

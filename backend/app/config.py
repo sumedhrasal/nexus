@@ -66,7 +66,7 @@ class Settings(BaseSettings):
 
     # Provider Configuration
     embedding_provider_strategy: str = Field(
-        default="local-first",
+        default="cost",
         description="Provider selection strategy: local-first, cost, fallback"
     )
     llm_provider_strategy: str = Field(
