@@ -68,8 +68,10 @@ async def root():
     }
 
 
-# TODO: Import and include routers
-# from app.api.routes import collections, search, ingest
-# app.include_router(collections.router, prefix="/collections", tags=["collections"])
-# app.include_router(search.router, prefix="/collections/{collection_id}/search", tags=["search"])
-# app.include_router(ingest.router, prefix="/collections/{collection_id}/ingest", tags=["ingest"])
+# Include API routers
+from app.api.routes import collections, search, ingest, sources
+
+app.include_router(collections.router)
+app.include_router(ingest.router)
+app.include_router(search.router)
+app.include_router(sources.router)
