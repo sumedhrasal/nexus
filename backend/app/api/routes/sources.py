@@ -2,11 +2,13 @@
 
 import time
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.models.database import Collection, Entity
 from app.models.schemas import IngestResponse
@@ -20,6 +22,7 @@ from app.core.sources.local_files import LocalFileSource
 from app.core.sources.github import GitHubSource
 
 router = APIRouter(prefix="/collections/{collection_id}/sources", tags=["sources"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 class LocalFileIngestRequest(BaseModel):
@@ -38,7 +41,9 @@ class GitHubIngestRequest(BaseModel):
 
 
 @router.post("/local-files", response_model=IngestResponse)
+@limiter.limit("10/minute")  # 10 local file ingestion requests per minute
 async def ingest_local_files(
+    request_obj: Request,
     collection_id: uuid.UUID,
     request: LocalFileIngestRequest,
     db: AsyncSession = Depends(get_db),
@@ -151,7 +156,9 @@ async def ingest_local_files(
 
 
 @router.post("/github", response_model=IngestResponse)
+@limiter.limit("10/minute")  # 10 GitHub ingestion requests per minute
 async def ingest_github(
+    request_obj: Request,
     collection_id: uuid.UUID,
     request: GitHubIngestRequest,
     db: AsyncSession = Depends(get_db),

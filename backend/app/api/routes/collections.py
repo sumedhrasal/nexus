@@ -1,10 +1,12 @@
 """Collection management endpoints."""
 
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.models.database import Collection, Organization
 from app.models.schemas import CollectionCreate, CollectionResponse
@@ -12,10 +14,13 @@ from app.api.dependencies import get_db, get_qdrant_client
 from app.storage.qdrant import QdrantStorage
 
 router = APIRouter(prefix="/collections", tags=["collections"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")  # 10 collection creates per minute
 async def create_collection(
+    request: Request,
     collection: CollectionCreate,
     db: AsyncSession = Depends(get_db),
     qdrant: QdrantStorage = Depends(get_qdrant_client)
@@ -62,7 +67,9 @@ async def create_collection(
 
 
 @router.get("", response_model=List[CollectionResponse])
+@limiter.limit("60/minute")  # 60 collection list requests per minute
 async def list_collections(
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """List all collections."""
@@ -72,7 +79,9 @@ async def list_collections(
 
 
 @router.get("/{collection_id}", response_model=CollectionResponse)
+@limiter.limit("100/minute")  # 100 collection get requests per minute
 async def get_collection(
+    request: Request,
     collection_id: uuid.UUID,
     db: AsyncSession = Depends(get_db)
 ):
@@ -92,7 +101,9 @@ async def get_collection(
 
 
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("10/minute")  # 10 collection deletes per minute
 async def delete_collection(
+    request: Request,
     collection_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     qdrant: QdrantStorage = Depends(get_qdrant_client)

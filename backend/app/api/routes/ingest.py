@@ -2,10 +2,12 @@
 
 import time
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.models.database import Collection, Entity
 from app.models.schemas import IngestRequest, IngestResponse
@@ -17,10 +19,13 @@ from app.core.hashing import hash_content
 from app.core.entities import ChunkEntity
 
 router = APIRouter(prefix="/collections/{collection_id}/ingest", tags=["ingestion"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("", response_model=IngestResponse)
+@limiter.limit("20/minute")  # 20 ingestion requests per minute
 async def ingest_documents(
+    request_obj: Request,
     collection_id: uuid.UUID,
     request: IngestRequest,
     db: AsyncSession = Depends(get_db),

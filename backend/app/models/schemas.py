@@ -59,6 +59,7 @@ class SearchRequest(BaseModel):
     offset: int = Field(default=0, ge=0)
     use_cache: bool = Field(default=True)
     expand_query: bool = Field(default=False)
+    hybrid: bool = Field(default=True, description="Use hybrid search (dense + BM25)")
     filters: Optional[Dict[str, Any]] = None
 
 

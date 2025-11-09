@@ -2,10 +2,12 @@
 
 import time
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.models.database import Collection, SearchAnalytics
 from app.models.schemas import SearchRequest, SearchResponse, SearchResult
@@ -13,12 +15,16 @@ from app.api.dependencies import get_db, get_qdrant_client, get_embedding_router
 from app.storage.qdrant import QdrantStorage
 from app.core.providers.router import ProviderRouter
 from app.search.cache import get_cache
+from app.search.hybrid import hybrid_search
 
 router = APIRouter(prefix="/collections/{collection_id}/search", tags=["search"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("", response_model=SearchResponse)
+@limiter.limit("30/minute")  # 30 searches per minute
 async def search_collection(
+    request_obj: Request,
     collection_id: uuid.UUID,
     request: SearchRequest,
     db: AsyncSession = Depends(get_db),
@@ -59,12 +65,26 @@ async def search_collection(
 
     # Perform search if not cached
     if not from_cache:
+        # Get more results for hybrid search reranking
+        search_limit = request.limit * 3 if request.hybrid else request.limit
+
         search_results = await qdrant.search(
             collection_id=str(collection_id),
             query_vector=query_embedding,
-            limit=request.limit,
+            limit=search_limit,
             filters=request.filters
         )
+
+        # Apply hybrid search if requested
+        if request.hybrid and search_results:
+            search_results = await hybrid_search(
+                query=request.query,
+                dense_results=search_results,
+                limit=request.limit
+            )
+        else:
+            # Limit to requested amount
+            search_results = search_results[:request.limit]
 
         # Format results - search_results is already a list of dicts
         results = [

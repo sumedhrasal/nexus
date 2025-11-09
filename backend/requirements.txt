@@ -15,6 +15,9 @@ qdrant-client==1.12.1
 # Cache
 redis[hiredis]==5.0.1
 
+# Rate Limiting
+slowapi==0.1.9
+
 # AI/ML
 openai==1.12.0
 google-generativeai==0.3.2
