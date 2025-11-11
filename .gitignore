@@ -83,3 +83,6 @@ Thumbs.db
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+*.md
+!README.md
