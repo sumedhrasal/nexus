@@ -1,0 +1,128 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexus-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nexus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-nexus}
+    ports:
+      - "127.0.0.1:5432:5432"  # Only expose to localhost
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nexus}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - nexus-internal
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: nexus-qdrant
+    ports:
+      - "127.0.0.1:6333:6333"  # Only expose to localhost
+      - "127.0.0.1:6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__LOG_LEVEL: INFO
+    healthcheck:
+      test: timeout 5 bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - nexus-internal
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: nexus-redis
+    ports:
+      - "127.0.0.1:6379:6379"  # Only expose to localhost
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - nexus-internal
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: nexus-api
+    ports:
+      - "8000:8000"
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nexus}
+
+      # Storage
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379
+
+      # AI Providers
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+
+      # Source Connectors
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GMAIL_CLIENT_ID: ${GMAIL_CLIENT_ID:-}
+      GMAIL_CLIENT_SECRET: ${GMAIL_CLIENT_SECRET:-}
+
+      # Security
+      SECRET_KEY: ${SECRET_KEY}
+      API_KEY_SALT: ${API_KEY_SALT}
+
+      # Application
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+
+      # Provider Strategy
+      EMBEDDING_PROVIDER_STRATEGY: ${EMBEDDING_PROVIDER_STRATEGY:-cost}
+    volumes:
+      - ./backend/alembic:/app/alembic:ro
+      - api_cache:/root/.cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - nexus-internal
+
+volumes:
+  postgres_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  redis_data:
+    driver: local
+  api_cache:
+    driver: local
+
+networks:
+  nexus-internal:
+    driver: bridge
+    internal: false  # Allow external access through API
