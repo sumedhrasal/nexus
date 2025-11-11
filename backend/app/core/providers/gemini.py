@@ -49,13 +49,13 @@ class GeminiProvider(BaseProvider):
                 task_type="retrieval_document"
             )
 
-            # Return embeddings list
+            # Gemini always returns {'embedding': [[...], [...], ...]}
+            # A list of embeddings, even for single text
             if isinstance(result, dict) and "embedding" in result:
-                # Single text case
-                return [result["embedding"]]
+                return result["embedding"]
             else:
-                # Multiple texts case
-                return result["embedding"] if "embedding" in result else result
+                # Fallback for unexpected format
+                return result
         except Exception as e:
             raise RuntimeError(f"Gemini embedding failed: {e}") from e
 

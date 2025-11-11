@@ -1,0 +1,123 @@
+"""Response synthesis service for RAG (Retrieval-Augmented Generation)."""
+
+from typing import List, Dict, Any, Optional, Tuple
+from app.core.providers.ollama import OllamaProvider
+from app.models.schemas import SearchResult
+
+
+class ResponseSynthesisService:
+    """Service for synthesizing answers from search results using LLM."""
+
+    def __init__(self, provider: Optional[OllamaProvider] = None):
+        """Initialize response synthesis service.
+
+        Args:
+            provider: Ollama provider instance (creates new one if not provided)
+        """
+        self.provider = provider or OllamaProvider()
+
+    async def synthesize_answer(
+        self,
+        query: str,
+        search_results: List[SearchResult],
+        max_context_chunks: int = 5
+    ) -> Tuple[str, int]:
+        """Synthesize a concise answer from search results.
+
+        Args:
+            query: Original user query
+            search_results: List of search results to synthesize from
+            max_context_chunks: Maximum number of chunks to use as context
+
+        Returns:
+            Tuple of (synthesized_answer, estimated_tokens_used)
+        """
+        if not search_results:
+            return "No relevant information found to answer this query.", 0
+
+        # Prepare context from top results
+        context_chunks = search_results[:max_context_chunks]
+        context_text = self._format_context(context_chunks)
+
+        # Count approximate tokens (rough estimate: 1 token ≈ 4 characters)
+        estimated_tokens = len(context_text) // 4 + len(query) // 4 + 200  # +200 for prompt overhead
+
+        system_prompt = """You are a helpful assistant that answers questions based on the provided context.
+
+Rules:
+1. Answer the question using ONLY the information from the context provided
+2. Be concise and direct - aim for 2-4 sentences maximum
+3. If the context doesn't contain enough information, say so honestly
+4. Cite relevant information naturally without using citation markers like [1] or [2]
+5. Do not make up information or use knowledge outside the provided context"""
+
+        user_prompt = f"""Context:
+{context_text}
+
+Question: {query}
+
+Please provide a concise answer based on the context above."""
+
+        try:
+            # Generate synthesized answer using Ollama
+            answer = await self.provider.generate(
+                prompt=user_prompt,
+                system=system_prompt
+            )
+
+            # Clean up the answer
+            answer = answer.strip()
+
+            # Update token estimate with response
+            estimated_tokens += len(answer) // 4
+
+            return answer, estimated_tokens
+
+        except Exception as e:
+            print(f"Response synthesis failed: {e}")
+            # Fallback: return a basic summary
+            fallback = f"Found {len(search_results)} relevant results. Here's the top match: {search_results[0].content[:200]}..."
+            return fallback, estimated_tokens
+
+    def _format_context(self, search_results: List[SearchResult]) -> str:
+        """Format search results into context for LLM.
+
+        Args:
+            search_results: List of search results
+
+        Returns:
+            Formatted context string
+        """
+        context_parts = []
+
+        for i, result in enumerate(search_results, 1):
+            # Include title if available
+            title_text = f"[{result.title}]\n" if result.title else ""
+
+            # Format: [Title (optional)]\nContent\n(Score: X.XX)
+            context_parts.append(
+                f"{i}. {title_text}{result.content}\n(Relevance: {result.score:.2f})"
+            )
+
+        return "\n\n".join(context_parts)
+
+    async def close(self):
+        """Close provider connections."""
+        if self.provider:
+            await self.provider.close()
+
+
+# Singleton instance
+_synthesis_service: Optional[ResponseSynthesisService] = None
+
+
+def get_synthesis_service() -> ResponseSynthesisService:
+    """Get or create response synthesis service singleton.
+
+    Returns:
+        ResponseSynthesisService instance
+    """
+    global _synthesis_service
+    if _synthesis_service is None:
+        _synthesis_service = ResponseSynthesisService()
+    return _synthesis_service

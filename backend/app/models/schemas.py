@@ -58,7 +58,8 @@ class SearchRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
     use_cache: bool = Field(default=True)
-    expand_query: bool = Field(default=False)
+    expand_query: bool = Field(default=False, description="Use LLM to expand query into multiple variations")
+    synthesize: bool = Field(default=False, description="Generate a synthesized answer from search results using LLM")
     hybrid: bool = Field(default=True, description="Use hybrid search (dense + BM25)")
     filters: Optional[Dict[str, Any]] = None
 
@@ -81,6 +82,10 @@ class SearchResponse(BaseModel):
     latency_ms: int
     from_cache: bool
     provider_used: str
+    expanded_queries: Optional[List[str]] = Field(default=None, description="Query variations used for search")
+    synthesized_answer: Optional[str] = Field(default=None, description="LLM-generated answer from search results")
+    tokens_used: Optional[int] = Field(default=None, description="Tokens used for synthesis")
+    synthesis_cost_usd: Optional[float] = Field(default=None, description="Cost of synthesis operation")
 
 
 # Analytics Schemas

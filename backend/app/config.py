@@ -41,7 +41,8 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", description="API host")
     api_port: int = Field(default=8000, description="API port")
     api_workers: int = Field(default=4, description="Number of API workers")
-    log_level: str = Field(default="INFO", description="Logging level")
+    log_level: str = Field(default="INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)")
+    json_logs: bool = Field(default=False, description="Enable JSON structured logging (for production)")
 
     # Security
     secret_key: str = Field(
