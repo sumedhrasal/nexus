@@ -110,12 +110,24 @@ class APIKeyCreate(BaseModel):
 
 
 class APIKeyResponse(BaseModel):
-    """API key response."""
+    """API key response (only returned on creation)."""
     id: UUID
     organization_id: UUID
     key: str  # Only returned on creation
     name: Optional[str] = None
     created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class APIKeyListItem(BaseModel):
+    """API key list item (without exposing the key)."""
+    id: UUID
+    name: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    last_used_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

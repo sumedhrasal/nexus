@@ -7,6 +7,7 @@ from app.core.providers.base import BaseProvider
 from app.core.providers.ollama import OllamaProvider
 from app.core.providers.gemini import GeminiProvider
 from app.core.providers.openai_provider import OpenAIProvider
+from app.core.embedding_cache import get_embedding_cache, EmbeddingCache
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -21,14 +22,22 @@ class ProviderRouter:
     - fallback: Try providers in order until success
     """
 
-    def __init__(self, strategy: str = "local-first"):
+    def __init__(self, strategy: str = "local-first", use_cache: bool = True):
         """Initialize provider router.
 
         Args:
             strategy: Selection strategy (local-first, cost, fallback)
+            use_cache: Whether to use embedding cache (default: True)
         """
         self.strategy = strategy
+        self.use_cache = use_cache
         self.providers: List[BaseProvider] = []
+        self.cache: Optional[EmbeddingCache] = None
+
+        if self.use_cache:
+            self.cache = get_embedding_cache()
+            logger.info("✓ Embedding cache enabled")
+
         self._initialize_providers()
         self._sort_providers()
 
@@ -88,7 +97,7 @@ class ProviderRouter:
         texts: List[str],
         required_dimension: Optional[int] = None
     ) -> Tuple[List[List[float]], str]:
-        """Generate embeddings with provider fallback.
+        """Generate embeddings with provider fallback and caching.
 
         Args:
             texts: List of texts to embed
@@ -100,6 +109,25 @@ class ProviderRouter:
         Raises:
             RuntimeError: If all providers fail
         """
+        # Check cache if enabled
+        if self.use_cache and self.cache:
+            # Get first provider name for cache key
+            provider_name = self.providers[0].name if self.providers else "default"
+
+            # Try to get from cache
+            cached_embeddings, missing_indices = await self.cache.get_batch(texts, provider_name)
+
+            # If all cached, return immediately
+            if not missing_indices:
+                logger.info(f"✓ All {len(texts)} embeddings from cache")
+                return cached_embeddings, f"{provider_name} (cached)"
+
+            # Some or all not cached, need to generate
+            logger.debug(f"Cache miss for {len(missing_indices)}/{len(texts)} embeddings")
+        else:
+            cached_embeddings = [None] * len(texts)
+            missing_indices = list(range(len(texts)))
+
         # Filter providers by dimension if specified
         providers = self.providers
         if required_dimension:
@@ -110,13 +138,29 @@ class ProviderRouter:
                     f"Available dimensions: {[p.get_embedding_dimension() for p in self.providers]}"
                 )
 
+        # Get texts that need embedding
+        texts_to_embed = [texts[i] for i in missing_indices]
+
+        # Try providers with fallback
         errors = []
         for provider in providers:
             try:
-                logger.debug(f"Trying {provider.name} for embedding...")
-                embeddings = await provider.embed(texts)
-                logger.info(f"✓ {provider.name} succeeded for {len(texts)} texts")
-                return embeddings, provider.name
+                logger.debug(f"Trying {provider.name} for {len(texts_to_embed)} embeddings...")
+                new_embeddings = await provider.embed(texts_to_embed)
+                logger.info(f"✓ {provider.name} succeeded for {len(texts_to_embed)} texts")
+
+                # Fill in the new embeddings
+                final_embeddings = cached_embeddings.copy()
+                for idx, embedding in zip(missing_indices, new_embeddings):
+                    final_embeddings[idx] = embedding
+
+                # Cache the newly generated embeddings
+                if self.use_cache and self.cache:
+                    await self.cache.set_batch(texts_to_embed, new_embeddings, provider.name)
+                    logger.debug(f"Cached {len(new_embeddings)} new embeddings")
+
+                return final_embeddings, provider.name
+
             except Exception as e:
                 error_msg = f"{provider.name} failed: {str(e)[:100]}"
                 logger.warning(f"✗ {error_msg}")
@@ -125,7 +169,7 @@ class ProviderRouter:
 
         # All providers failed
         raise RuntimeError(
-            f"All embedding providers failed for {len(texts)} texts. Errors:\n" +
+            f"All embedding providers failed for {len(texts_to_embed)} texts. Errors:\n" +
             "\n".join(f"- {e}" for e in errors)
         )
 
@@ -206,6 +250,16 @@ class ProviderRouter:
             }
             for p in self.providers
         ]
+
+    def get_cache_stats(self) -> Optional[dict]:
+        """Get embedding cache statistics.
+
+        Returns:
+            Cache stats dict if cache is enabled, None otherwise
+        """
+        if self.use_cache and self.cache:
+            return self.cache.get_stats()
+        return None
 
 
 # Global router instance
