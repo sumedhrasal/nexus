@@ -234,6 +234,48 @@ curl -X POST "http://localhost:8000/collections/$COLLECTION_ID/ingest/file" \
   -F "title=My Document"
 ```
 
+### Directory/GitHub Repository Ingestion
+
+Ingest files from a local directory (e.g., a cloned GitHub repository):
+
+```bash
+# Clone a repository locally
+cd ~/repos
+git clone https://github.com/fastapi/fastapi.git
+
+# Ingest only markdown files from docs folder
+curl -X POST "http://localhost:8000/collections/$COLLECTION_ID/ingest/directory" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "directory_path": "/Users/username/repos/fastapi",
+    "file_types": [".md"],
+    "include_paths": ["docs/"],
+    "exclude_paths": [".git", "tests", "node_modules"],
+    "max_files": 500,
+    "extract_git_metadata": true
+  }'
+```
+
+**Features**:
+- ✅ Filter by file types (`.md`, `.py`, `.tsx`, etc.)
+- ✅ Filter by paths (include/exclude patterns)
+- ✅ Auto-detect text vs binary files
+- ✅ Extract git metadata (repo name, commit SHA)
+- ✅ Source deduplication (won't re-ingest same file@commit)
+- ✅ Configurable file size and count limits
+
+**Example: Ingest entire Python codebase**:
+```bash
+curl -X POST "http://localhost:8000/collections/$COLLECTION_ID/ingest/directory" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "directory_path": "/path/to/your/project",
+    "file_types": [".py", ".md"],
+    "exclude_paths": [".git", "__pycache__", "venv", "node_modules", "dist"],
+    "max_files": 1000
+  }'
+```
+
 ### View Metrics
 
 ```bash
@@ -329,15 +371,18 @@ API_WORKERS=4         # Uvicorn workers
 - ✅ Rate limiting
 - ✅ File upload ingestion
 - ✅ Basic authentication
+- ✅ **Search quality metrics** (Precision@k, MRR, Coverage, CTR)
+- ✅ **User feedback tracking** (clicks, copies, ratings)
+- ✅ **Source-level deduplication** (prevent duplicate ingestion)
+- ✅ **Directory/GitHub repository ingestion** (clone & ingest with filters)
 
 ### 🚧 Planned Features
 
 **Next (v0.2)**:
 - [ ] Real-time updates via webhooks (not just batch syncs)
 - [ ] Personalized search results per user
-- [ ] Cross-source deduplication
-- [ ] Search quality metrics (precision@k, NDCG)
 - [ ] Multi-model embedding support (different models per collection)
+- [ ] Direct GitHub API integration (without manual cloning)
 
 **Future**:
 - [ ] Python SDK

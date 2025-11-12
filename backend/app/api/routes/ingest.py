@@ -10,7 +10,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.models.database import Collection, Entity
-from app.models.schemas import IngestRequest, IngestResponse
+from app.models.schemas import IngestRequest, IngestResponse, DirectoryIngestRequest, DocumentCreate
 from app.api.dependencies import get_db, get_qdrant_client, get_embedding_router
 from app.storage.qdrant import QdrantStorage
 from app.core.providers.router import ProviderRouter
@@ -19,6 +19,7 @@ from app.core.hashing import hash_content
 from app.core.entities import ChunkEntity
 from app.core.logging import get_logger
 from app.core.metrics import record_ingestion_metrics
+from app.sources.directory_scanner import DirectoryScanner
 
 router = APIRouter(prefix="/collections/{collection_id}/ingest", tags=["ingestion"])
 limiter = Limiter(key_func=get_remote_address)
@@ -391,3 +392,194 @@ async def ingest_file(
         entities_updated=entities_updated,
         processing_time_ms=processing_time_ms
     )
+
+
+@router.post("/directory", response_model=IngestResponse)
+@limiter.limit("10/hour")  # Stricter limit for directory scans (resource intensive)
+async def ingest_directory(
+    request_obj: Request,
+    collection_id: uuid.UUID,
+    request: DirectoryIngestRequest,
+    db: AsyncSession = Depends(get_db),
+    qdrant: QdrantStorage = Depends(get_qdrant_client),
+    router: ProviderRouter = Depends(get_embedding_router)
+):
+    """Ingest files from a local directory (e.g., cloned git repository).
+
+    This endpoint scans a local directory and ingests text files based on filters.
+    Useful for ingesting cloned GitHub repositories or any local file collections.
+
+    Args:
+        collection_id: UUID of the collection to ingest into
+        request: Directory ingestion configuration with path and filters
+
+    Returns:
+        IngestResponse with processing statistics
+
+    Raises:
+        HTTPException: If directory doesn't exist or too many files found
+    """
+    start_time = time.time()
+
+    logger.info(
+        "directory_ingestion_started",
+        collection_id=str(collection_id),
+        directory_path=request.directory_path,
+        file_types=request.file_types,
+        max_files=request.max_files
+    )
+
+    # Verify collection exists
+    result = await db.execute(
+        select(Collection).where(Collection.id == collection_id)
+    )
+    collection = result.scalar_one_or_none()
+
+    if not collection:
+        logger.warning("collection_not_found", collection_id=str(collection_id))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Collection {collection_id} not found"
+        )
+
+    # Initialize directory scanner
+    try:
+        scanner = DirectoryScanner(
+            base_path=request.directory_path,
+            file_types=request.file_types,
+            include_paths=request.include_paths,
+            exclude_paths=request.exclude_paths,
+            max_file_size_mb=request.max_file_size_mb
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    # Scan directory for files
+    files = scanner.scan(max_files=request.max_files)
+
+    if not files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No files found matching the specified filters"
+        )
+
+    if len(files) > request.max_files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Found {len(files)} files, but max_files is {request.max_files}. "
+                   "Adjust filters or increase max_files."
+        )
+
+    logger.info(
+        "directory_scan_completed",
+        files_found=len(files),
+        directory_path=request.directory_path
+    )
+
+    # Extract git metadata if requested
+    git_metadata = None
+    source_type = "directory"
+
+    if request.extract_git_metadata:
+        git_metadata = scanner.extract_git_metadata()
+        if git_metadata:
+            source_type = "github"
+
+    # Process each file and create DocumentCreate objects
+    documents = []
+    skipped_files = 0
+
+    for file_info in files:
+        try:
+            # Read file content
+            content = file_info["path"].read_text(encoding="utf-8")
+
+            if not content.strip():
+                logger.debug(
+                    "empty_file_skipped",
+                    path=str(file_info["relative_path"])
+                )
+                skipped_files += 1
+                continue
+
+            # Build source_id
+            if git_metadata:
+                # Format: "{repo_name}/{relative_path}@{commit_sha}"
+                source_id = f"{git_metadata['repo_name']}/{file_info['relative_path']}@{git_metadata['commit_sha']}"
+            else:
+                # Format: "{relative_path}"
+                source_id = str(file_info["relative_path"])
+
+            # Create document with metadata
+            metadata = {
+                "path": str(file_info["relative_path"]),
+                "size_mb": file_info["size_mb"],
+            }
+
+            # Add git metadata if available
+            if git_metadata:
+                metadata.update(git_metadata)
+
+            documents.append(DocumentCreate(
+                content=content,
+                title=file_info["path"].name,
+                metadata=metadata,
+                source_type=source_type,
+                source_id=source_id
+            ))
+
+        except UnicodeDecodeError:
+            logger.warning(
+                "file_encoding_error",
+                path=str(file_info["relative_path"]),
+                message="Failed to decode file as UTF-8"
+            )
+            skipped_files += 1
+            continue
+        except Exception as e:
+            logger.warning(
+                "file_read_error",
+                path=str(file_info["relative_path"]),
+                error=str(e)
+            )
+            skipped_files += 1
+            continue
+
+    if not documents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No valid documents to ingest. {skipped_files} files were skipped due to errors."
+        )
+
+    logger.info(
+        "documents_prepared",
+        total_documents=len(documents),
+        skipped_files=skipped_files
+    )
+
+    # Use existing ingestion logic
+    ingest_request = IngestRequest(documents=documents)
+    response = await ingest_documents(
+        request_obj=request_obj,
+        collection_id=collection_id,
+        request=ingest_request,
+        db=db,
+        qdrant=qdrant,
+        router=router
+    )
+
+    logger.info(
+        "directory_ingestion_completed",
+        collection_id=str(collection_id),
+        directory_path=request.directory_path,
+        documents_processed=response.documents_processed,
+        chunks_created=response.chunks_created,
+        entities_inserted=response.entities_inserted,
+        entities_updated=response.entities_updated,
+        processing_time_ms=response.processing_time_ms
+    )
+
+    return response

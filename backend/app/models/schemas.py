@@ -53,6 +53,35 @@ class IngestResponse(BaseModel):
     processing_time_ms: int
 
 
+class DirectoryIngestRequest(BaseModel):
+    """Ingest files from a local directory."""
+    directory_path: str = Field(..., description="Absolute path to directory to scan")
+
+    # Filters
+    file_types: Optional[List[str]] = Field(
+        default=None,
+        description="File extensions to include (e.g., ['.md', '.py']). None = all text files"
+    )
+    include_paths: Optional[List[str]] = Field(
+        default=None,
+        description="Path patterns to include (e.g., ['docs/', 'src/']). None = all paths"
+    )
+    exclude_paths: Optional[List[str]] = Field(
+        default=[".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"],
+        description="Path patterns to exclude"
+    )
+
+    # Limits
+    max_files: int = Field(default=1000, ge=1, le=10000, description="Maximum number of files to process")
+    max_file_size_mb: int = Field(default=10, ge=1, le=100, description="Skip files larger than this (MB)")
+
+    # Git metadata extraction
+    extract_git_metadata: bool = Field(
+        default=True,
+        description="Extract repo name and commit SHA from .git directory"
+    )
+
+
 # Search Schemas
 class SearchRequest(BaseModel):
     """Search request."""
@@ -77,6 +106,7 @@ class SearchResult(BaseModel):
 
 class SearchResponse(BaseModel):
     """Search response."""
+    search_id: UUID = Field(description="Unique ID for this search (for submitting feedback)")
     collection_id: UUID
     query: str
     results: List[SearchResult]

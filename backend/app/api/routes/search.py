@@ -225,8 +225,10 @@ async def search_collection(
     )
     db.add(analytics)
     await db.commit()
+    await db.refresh(analytics)  # Get the generated ID
 
     return SearchResponse(
+        search_id=analytics.id,
         collection_id=collection_id,
         query=search_request.query,
         results=results,
