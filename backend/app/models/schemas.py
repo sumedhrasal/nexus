@@ -34,6 +34,8 @@ class DocumentCreate(BaseModel):
     content: str = Field(..., min_length=1)
     title: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+    source_type: Optional[str] = Field(default=None, description="Source type (file_upload, github, gmail, etc.)")
+    source_id: Optional[str] = Field(default=None, description="Unique identifier from source")
 
 
 class IngestRequest(BaseModel):
@@ -136,3 +138,52 @@ class APIKeyListItem(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Search Quality Metrics Schemas
+class SearchFeedbackCreate(BaseModel):
+    """Create search feedback request."""
+    result_position: int = Field(..., ge=0, description="Position of the result (0-indexed)")
+    result_entity_id: str = Field(..., min_length=1, description="Entity ID of the clicked result")
+    feedback_type: str = Field(..., pattern="^(click|copy|thumbs_up|thumbs_down)$")
+    feedback_metadata: Optional[Dict[str, Any]] = None
+
+
+class SearchFeedbackResponse(BaseModel):
+    """Search feedback response."""
+    id: UUID
+    search_analytics_id: UUID
+    result_position: int
+    result_entity_id: str
+    feedback_type: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class QualityMetrics(BaseModel):
+    """Search quality metrics for a collection."""
+    collection_id: UUID
+    total_searches: int
+    total_feedback: int
+
+    # Precision metrics
+    precision_at_1: float = Field(description="Precision at position 1")
+    precision_at_3: float = Field(description="Precision at position 3")
+    precision_at_5: float = Field(description="Precision at position 5")
+    precision_at_10: float = Field(description="Precision at position 10")
+
+    # Ranking metrics
+    mrr: float = Field(description="Mean Reciprocal Rank")
+    avg_first_click_position: float = Field(description="Average position of first clicked result")
+
+    # Coverage
+    searches_with_results: int
+    searches_with_clicks: int
+    coverage: float = Field(description="Percentage of searches that returned results")
+    click_through_rate: float = Field(description="Percentage of searches that got clicks")
+
+    # Time period
+    period_start: Optional[datetime] = None
+    period_end: Optional[datetime] = None

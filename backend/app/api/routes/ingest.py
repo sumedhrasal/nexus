@@ -71,7 +71,41 @@ async def ingest_documents(
         # Compute content hash
         content_hash = hash_content(doc.content)
 
-        # Check if entity exists
+        # Check for source-level deduplication first (if source info provided)
+        if doc.source_type and doc.source_id:
+            source_result = await db.execute(
+                select(Entity).where(
+                    Entity.collection_id == collection_id,
+                    Entity.source_type == doc.source_type,
+                    Entity.source_id == doc.source_id
+                )
+            )
+            existing_source_entity = source_result.scalar_one_or_none()
+
+            if existing_source_entity:
+                # Same source already ingested
+                # Check if content changed (by comparing hash)
+                if existing_source_entity.content_hash == content_hash:
+                    # Content unchanged, skip
+                    entities_updated += 1
+                    logger.debug(
+                        "source_dedup_skip",
+                        source_type=doc.source_type,
+                        source_id=doc.source_id,
+                        reason="unchanged"
+                    )
+                    continue
+                else:
+                    # Content changed - need to update
+                    # For now, we'll treat this as a new entity
+                    # TODO: Implement update logic (delete old chunks, add new ones)
+                    logger.info(
+                        "source_content_changed",
+                        source_type=doc.source_type,
+                        source_id=doc.source_id
+                    )
+
+        # Check if entity exists by content hash (for non-source or new source content)
         result = await db.execute(
             select(Entity).where(
                 Entity.collection_id == collection_id,
@@ -80,8 +114,8 @@ async def ingest_documents(
         )
         existing_entity = result.scalar_one_or_none()
 
-        if existing_entity:
-            # Content unchanged, skip
+        if existing_entity and not (doc.source_type and doc.source_id):
+            # Content unchanged, skip (only if no source tracking)
             entities_updated += 1
             continue
 
@@ -92,6 +126,8 @@ async def ingest_documents(
             entity_id=entity_id,
             entity_type="document",
             content_hash=content_hash,
+            source_type=doc.source_type,
+            source_id=doc.source_id,
             entity_metadata={
                 "title": doc.title,
                 **(doc.metadata or {})
@@ -99,6 +135,13 @@ async def ingest_documents(
         )
         db.add(db_entity)
         entities_inserted += 1
+
+        logger.debug(
+            "entity_created",
+            entity_id=entity_id,
+            source_type=doc.source_type,
+            source_id=doc.source_id
+        )
 
         # Chunk content
         chunk_texts = chunker.chunk(doc.content)
@@ -233,31 +276,45 @@ async def ingest_file(
     # Compute content hash
     content_hash = hash_content(content)
 
-    # Check if entity exists
-    result = await db.execute(
+    # Source tracking for file uploads
+    source_type = "file_upload"
+    source_id = file.filename  # Use filename as source ID
+
+    # Check for source-level deduplication
+    source_result = await db.execute(
         select(Entity).where(
             Entity.collection_id == collection_id,
-            Entity.content_hash == content_hash
+            Entity.source_type == source_type,
+            Entity.source_id == source_id
         )
     )
-    existing_entity = result.scalar_one_or_none()
+    existing_source_entity = source_result.scalar_one_or_none()
 
     documents_processed = 0
     chunks_created = 0
     entities_inserted = 0
     entities_updated = 0
 
-    if existing_entity:
-        # Content unchanged, skip
-        entities_updated += 1
+    if existing_source_entity:
+        # Same file already uploaded
+        if existing_source_entity.content_hash == content_hash:
+            # Content unchanged, skip
+            entities_updated += 1
+            logger.info(
+                "file_already_ingested",
+                filename=file.filename,
+                collection_id=str(collection_id)
+            )
     else:
-        # Create entity
+        # Create entity with source tracking
         entity_id = f"doc_{uuid.uuid4().hex[:12]}"
         db_entity = Entity(
             collection_id=collection_id,
             entity_id=entity_id,
             entity_type="document",
             content_hash=content_hash,
+            source_type=source_type,
+            source_id=source_id,
             entity_metadata={
                 "title": doc_title,
                 "filename": file.filename,

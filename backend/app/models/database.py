@@ -60,7 +60,7 @@ class Collection(Base):
 
 
 class Entity(Base):
-    """Entities (documents/chunks) tracked for change detection."""
+    """Entities (documents/chunks) tracked for change detection and source deduplication."""
 
     __tablename__ = "entities"
 
@@ -70,6 +70,11 @@ class Entity(Base):
     entity_type = Column(String(50), nullable=False)  # file, email, page, etc.
     content_hash = Column(String(64), nullable=False)  # SHA256 hash for change detection
     entity_metadata = Column(JSON, nullable=True)  # Flexible metadata storage (renamed from metadata)
+
+    # Source tracking for deduplication
+    source_type = Column(String(50), nullable=True)  # "file_upload", "github", "gmail", etc.
+    source_id = Column(String(512), nullable=True)  # Unique identifier from source (file path, commit hash, email ID)
+
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
 
@@ -100,3 +105,21 @@ class SearchAnalytics(Base):
 
     # Relationships
     collection = relationship("Collection", back_populates="search_analytics")
+    feedback = relationship("SearchFeedback", back_populates="search_analytics", cascade="all, delete-orphan")
+
+
+class SearchFeedback(Base):
+    """User feedback on search results for quality metrics."""
+
+    __tablename__ = "search_feedback"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    search_analytics_id = Column(UUID(as_uuid=True), ForeignKey("search_analytics.id"), nullable=False)
+    result_position = Column(Integer, nullable=False)  # Position in results (0-indexed)
+    result_entity_id = Column(String(512), nullable=False)  # Which result was interacted with
+    feedback_type = Column(String(50), nullable=False)  # "click", "copy", "thumbs_up", "thumbs_down"
+    feedback_metadata = Column(JSON, nullable=True)  # Additional context (dwell_time, etc.)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+
+    # Relationships
+    search_analytics = relationship("SearchAnalytics", back_populates="feedback")

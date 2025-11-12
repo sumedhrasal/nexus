@@ -103,10 +103,11 @@ async def root():
 
 
 # Include API routers
-from app.api.routes import collections, search, ingest, sources, auth
+from app.api.routes import collections, search, ingest, sources, auth, metrics
 
 app.include_router(auth.router)
 app.include_router(collections.router)
 app.include_router(ingest.router)
 app.include_router(search.router)
 app.include_router(sources.router)
+app.include_router(metrics.router)
