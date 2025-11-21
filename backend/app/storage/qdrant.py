@@ -94,18 +94,29 @@ class QdrantStorage:
                     logger.warning(f"Chunk {chunk.chunk_id} missing embedding, skipping")
                     continue
 
+                # Build payload with parent-child support
+                payload = {
+                    "entity_id": chunk.parent_id,
+                    "chunk_index": chunk.chunk_index,
+                    "chunk_id": chunk.chunk_id,
+                    "content": chunk.content,
+                    "title": chunk.title,
+                    "metadata": chunk.metadata or {}
+                }
+
+                # Add parent-child hierarchy fields if present
+                if hasattr(chunk, 'parent_content') and chunk.parent_content:
+                    payload["parent_content"] = chunk.parent_content
+                if hasattr(chunk, 'parent_chunk_id') and chunk.parent_chunk_id:
+                    payload["parent_chunk_id"] = chunk.parent_chunk_id
+                if hasattr(chunk, 'is_child_chunk'):
+                    payload["is_child_chunk"] = chunk.is_child_chunk
+
                 # Create point
                 point = PointStruct(
                     id=str(uuid.uuid5(uuid.NAMESPACE_DNS, chunk.chunk_id)),
                     vector={"dense": chunk.embedding},
-                    payload={
-                        "entity_id": chunk.parent_id,
-                        "chunk_index": chunk.chunk_index,
-                        "chunk_id": chunk.chunk_id,
-                        "content": chunk.content,
-                        "title": chunk.title,
-                        "metadata": chunk.metadata or {}
-                    }
+                    payload=payload
                 )
                 points.append(point)
 
@@ -158,14 +169,24 @@ class QdrantStorage:
             # Format results
             formatted = []
             for result in results:
-                formatted.append({
+                result_dict = {
                     "entity_id": result.payload.get("entity_id"),
                     "chunk_id": result.payload.get("chunk_id"),
                     "content": result.payload.get("content"),
                     "title": result.payload.get("title"),
                     "score": result.score,
                     "metadata": result.payload.get("metadata", {})
-                })
+                }
+
+                # Include parent-child fields if present
+                if "parent_content" in result.payload:
+                    result_dict["parent_content"] = result.payload["parent_content"]
+                if "parent_chunk_id" in result.payload:
+                    result_dict["parent_chunk_id"] = result.payload["parent_chunk_id"]
+                if "is_child_chunk" in result.payload:
+                    result_dict["is_child_chunk"] = result.payload["is_child_chunk"]
+
+                formatted.append(result_dict)
 
             return formatted
 

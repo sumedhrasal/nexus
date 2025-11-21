@@ -17,7 +17,13 @@ from app.core.providers.router import ProviderRouter
 from app.search.cache import get_cache
 from app.search.hybrid import hybrid_search
 from app.search.query_expansion import get_expansion_service
+from app.search.query_reformulation import get_query_reformulator
+from app.search.query_classifier import get_adaptive_weights, classify_query
+from app.search.reranker import get_reranker
+from app.search.context_expansion import expand_context_windows
 from app.search.synthesis import get_synthesis_service
+from app.search.ranking import reciprocal_rank_fusion, maximal_marginal_relevance
+from app.config import settings
 from app.core.logging import get_logger
 from app.core.metrics import (
     record_search_metrics,
@@ -65,17 +71,40 @@ async def search_collection(
             detail=f"Collection {collection_id} not found"
         )
 
+    # IMPROVEMENT: Query reformulation (convert natural language to search-friendly)
+    reformulated_query = search_request.query
+    reformulator = get_query_reformulator()
+    try:
+        reformulated_query = await reformulator.reformulate(search_request.query, use_llm=True)
+        logger.info(
+            "query_reformulated",
+            original=search_request.query,
+            reformulated=reformulated_query
+        )
+    except Exception as e:
+        logger.warning("query_reformulation_failed", error=str(e), using_original=True)
+        reformulated_query = search_request.query
+
+    # IMPROVEMENT: Adaptive hybrid search weighting based on query type
+    query_type, semantic_weight, bm25_weight = classify_query(reformulated_query)
+    logger.info(
+        "query_classified",
+        query_type=query_type.value,
+        semantic_weight=semantic_weight,
+        bm25_weight=bm25_weight
+    )
+
     # Query expansion (if enabled)
     expanded_queries = None
-    queries_to_search = [search_request.query]
+    queries_to_search = [reformulated_query]
 
     if search_request.expand_query:
         expansion_start = time.time()
         query_expansion_requests_total.inc()
-        logger.debug("query_expansion_started", query=search_request.query)
+        logger.debug("query_expansion_started", query=reformulated_query)
 
         expansion_service = get_expansion_service()
-        expanded_queries = await expansion_service.expand_query(search_request.query)
+        expanded_queries = await expansion_service.expand_query(reformulated_query)
         queries_to_search = expanded_queries
 
         expansion_duration = time.time() - expansion_start
@@ -86,8 +115,9 @@ async def search_collection(
             duration_seconds=expansion_duration
         )
 
-    # Perform multi-query search
-    all_results_map: Dict[str, Dict] = {}  # entity_id -> result dict (for deduplication)
+    # Perform multi-query search with improved retrieval
+    all_result_lists: List[List[Dict]] = []  # Store separate lists for RRF
+    from_cache = False
 
     for query_text in queries_to_search:
         # Embed query
@@ -100,7 +130,6 @@ async def search_collection(
         # Check cache if enabled (only for original query, not expanded)
         cache = get_cache()
         cached_results = None
-        from_cache = False
 
         if search_request.use_cache and query_text == search_request.query:
             cached_results = await cache.get(str(collection_id), query_embedding)
@@ -109,8 +138,9 @@ async def search_collection(
 
         # Perform search if not cached
         if not from_cache:
-            # Get more results for hybrid search reranking
-            search_limit = search_request.limit * 3 if search_request.hybrid else search_request.limit
+            # IMPROVEMENT: Get 5x more candidates before reranking for better recall
+            retrieval_multiplier = 5 if search_request.expand_query or search_request.hybrid else 3
+            search_limit = search_request.limit * retrieval_multiplier
 
             search_results = await qdrant.search(
                 collection_id=str(collection_id),
@@ -121,35 +151,77 @@ async def search_collection(
 
             # Apply hybrid search if requested
             if search_request.hybrid and search_results:
+                # IMPROVEMENT: Use adaptive weighting based on query type
                 search_results = await hybrid_search(
                     query=query_text,
                     dense_results=search_results,
-                    limit=search_request.limit
+                    limit=search_limit,  # Keep more candidates for RRF
+                    alpha=semantic_weight  # Adaptive weight based on query classification
                 )
-            else:
-                # Limit to requested amount
-                search_results = search_results[:search_request.limit]
 
-            # Merge results (deduplicate by entity_id, keep highest score)
-            for hit in search_results:
-                entity_id = hit["entity_id"]
-                if entity_id not in all_results_map or hit["score"] > all_results_map[entity_id]["score"]:
-                    all_results_map[entity_id] = hit
+            all_result_lists.append(search_results)
 
             # Cache results (only original query)
             if search_request.use_cache and query_text == search_request.query:
-                results_dict = [r for r in search_results]
-                await cache.set(str(collection_id), query_embedding, results_dict)
+                await cache.set(str(collection_id), query_embedding, search_results)
         else:
-            # Load cached results
-            for cached_result in cached_results:
-                entity_id = cached_result["entity_id"]
-                if entity_id not in all_results_map or cached_result["score"] > all_results_map[entity_id]["score"]:
-                    all_results_map[entity_id] = cached_result
+            all_result_lists.append(cached_results)
 
-    # Convert to sorted list and limit to requested amount
-    merged_results = sorted(all_results_map.values(), key=lambda x: x["score"], reverse=True)
-    merged_results = merged_results[:search_request.limit]
+    # IMPROVEMENT: Use Reciprocal Rank Fusion for multi-query fusion
+    if len(all_result_lists) > 1:
+        merged_results = reciprocal_rank_fusion(all_result_lists, k=60)
+        logger.debug(
+            "rrf_fusion_applied",
+            num_queries=len(all_result_lists),
+            total_unique=len(merged_results)
+        )
+    else:
+        merged_results = all_result_lists[0] if all_result_lists else []
+        merged_results = sorted(merged_results, key=lambda x: x["score"], reverse=True)
+
+    # IMPROVEMENT: Cross-encoder re-ranking for better relevance
+    if settings.enable_reranking and merged_results:
+        try:
+            reranker = get_reranker()
+            merged_results = await reranker.rerank(
+                query=reformulated_query,
+                results=merged_results,
+                top_k=settings.reranker_top_k
+            )
+            logger.info(
+                "reranking_applied",
+                num_results=len(merged_results),
+                top_k=settings.reranker_top_k
+            )
+        except Exception as e:
+            logger.warning(
+                "reranking_failed",
+                error=str(e),
+                using_original_ranking=True
+            )
+
+    # IMPROVEMENT: Apply MMR for diversity (reduce redundant results)
+    if len(merged_results) > search_request.limit:
+        merged_results = maximal_marginal_relevance(
+            merged_results,
+            limit=search_request.limit,
+            lambda_param=0.7  # 70% relevance, 30% diversity
+        )
+    else:
+        merged_results = merged_results[:search_request.limit]
+
+    # IMPROVEMENT: Expand context windows for better synthesis
+    try:
+        merged_results = await expand_context_windows(
+            results=merged_results,
+            db=db,
+            qdrant=qdrant,
+            collection_id=str(collection_id),
+            window_size=1  # Include 1 chunk before and after
+        )
+        logger.debug("context_windows_expanded", num_results=len(merged_results))
+    except Exception as e:
+        logger.warning("context_expansion_failed", error=str(e), using_original_results=True)
 
     # Format results
     results = [

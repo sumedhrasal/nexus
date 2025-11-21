@@ -27,7 +27,12 @@ class BaseEntity:
 
 @dataclass
 class ChunkEntity:
-    """Chunk of a parent entity for embedding."""
+    """Chunk of a parent entity for embedding.
+
+    Supports hierarchical parent-child chunking:
+    - Child chunks: small, precise chunks for vector search
+    - Parent chunks: larger context chunks for LLM synthesis
+    """
 
     parent_id: str  # Parent entity ID
     chunk_index: int  # Index of this chunk
@@ -36,6 +41,11 @@ class ChunkEntity:
     metadata: Dict[str, Any] = field(default_factory=dict)
     embedding: Optional[List[float]] = None  # Dense embedding
     sparse_embedding: Optional[Dict[str, Any]] = None  # Sparse BM25 embedding
+
+    # Parent-child hierarchy fields
+    parent_content: Optional[str] = None  # Full parent chunk content
+    parent_chunk_id: Optional[str] = None  # ID of parent chunk
+    is_child_chunk: bool = False  # True if this is a child of a larger parent
 
     @property
     def chunk_id(self) -> str:

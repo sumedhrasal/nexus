@@ -80,24 +80,75 @@ Please provide a concise answer based on the context above."""
             return fallback, estimated_tokens
 
     def _format_context(self, search_results: List[SearchResult]) -> str:
-        """Format search results into context for LLM.
+        """Format search results into hierarchical context for LLM.
+
+        Uses parent-child chunking:
+        - High relevance: Full parent content
+        - Medium relevance: Expanded context
+        - Low relevance: Just child chunk
 
         Args:
             search_results: List of search results
 
         Returns:
-            Formatted context string
+            Formatted hierarchical context string
         """
+        # Organize results by relevance tier
+        high_relevance = []  # Top 40% - use parent content
+        medium_relevance = []  # Mid 40% - use expanded content
+        low_relevance = []  # Bottom 20% - use child chunk only
+
+        total = len(search_results)
+        high_threshold = int(total * 0.4)
+        medium_threshold = int(total * 0.8)
+
+        for i, result in enumerate(search_results):
+            if i < high_threshold:
+                high_relevance.append(result)
+            elif i < medium_threshold:
+                medium_relevance.append(result)
+            else:
+                low_relevance.append(result)
+
         context_parts = []
 
-        for i, result in enumerate(search_results, 1):
-            # Include title if available
-            title_text = f"[{result.title}]\n" if result.title else ""
+        # High relevance section - full parent context
+        if high_relevance:
+            context_parts.append("=== HIGHLY RELEVANT CONTEXT ===\n")
+            for i, result in enumerate(high_relevance, 1):
+                title_text = f"[{result.title}]\n" if result.title else ""
 
-            # Format: [Title (optional)]\nContent\n(Score: X.XX)
-            context_parts.append(
-                f"{i}. {title_text}{result.content}\n(Relevance: {result.score:.2f})"
-            )
+                # Use parent content if available (large context)
+                content = result.metadata.get("parent_content") if hasattr(result, "metadata") and result.metadata else None
+                if not content:
+                    # Fallback to expanded content
+                    content = result.metadata.get("expanded_content", result.content) if hasattr(result, "metadata") and result.metadata else result.content
+
+                context_parts.append(
+                    f"{i}. {title_text}{content}\n(Relevance: {result.score:.2f})"
+                )
+
+        # Medium relevance section - expanded context
+        if medium_relevance:
+            context_parts.append("\n=== MODERATELY RELEVANT CONTEXT ===\n")
+            for i, result in enumerate(medium_relevance, 1):
+                title_text = f"[{result.title}]\n" if result.title else ""
+
+                # Use expanded content if available
+                content = result.metadata.get("expanded_content", result.content) if hasattr(result, "metadata") and result.metadata else result.content
+
+                context_parts.append(
+                    f"{i}. {title_text}{content}\n(Relevance: {result.score:.2f})"
+                )
+
+        # Low relevance section - child chunks only (brief)
+        if low_relevance:
+            context_parts.append("\n=== BACKGROUND CONTEXT ===\n")
+            for i, result in enumerate(low_relevance, 1):
+                # Just child chunk for background
+                context_parts.append(
+                    f"{i}. {result.content[:200]}... (Relevance: {result.score:.2f})"
+                )
 
         return "\n\n".join(context_parts)
 

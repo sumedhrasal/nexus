@@ -3,6 +3,9 @@
 import json
 from typing import List, Optional
 from app.core.providers.ollama import OllamaProvider
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class QueryExpansionService:
@@ -41,14 +44,34 @@ Return format (JSON array only):
 ["variation 1", "variation 2", "variation 3", "variation 4"]"""
 
         try:
+            logger.debug(
+                "query_expansion_starting",
+                query=query,
+                num_variations=num_variations,
+                provider=self.provider.name,
+                model=self.provider.llm_model
+            )
+
             # Generate variations using Ollama
             response = await self.provider.generate(
                 prompt=user_prompt,
                 system=system_prompt
             )
 
+            logger.debug(
+                "query_expansion_response_received",
+                response_length=len(response),
+                response_preview=response[:200]
+            )
+
             # Parse JSON response
             variations = self._parse_variations(response)
+
+            logger.info(
+                "query_expansion_success",
+                query=query,
+                variations_generated=len(variations)
+            )
 
             # Ensure we have the requested number of variations
             variations = variations[:num_variations]
@@ -58,6 +81,13 @@ Return format (JSON array only):
 
         except Exception as e:
             # Fallback: return original query if expansion fails
+            logger.error(
+                "query_expansion_failed",
+                query=query,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True  # This will log the full stack trace
+            )
             print(f"Query expansion failed: {e}, using original query only")
             return [query]
 

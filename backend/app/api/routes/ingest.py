@@ -15,11 +15,14 @@ from app.api.dependencies import get_db, get_qdrant_client, get_embedding_router
 from app.storage.qdrant import QdrantStorage
 from app.core.providers.router import ProviderRouter
 from app.core.chunking import get_chunker
+from app.core.semantic_chunking import get_semantic_chunker
 from app.core.hashing import hash_content
 from app.core.entities import ChunkEntity
 from app.core.logging import get_logger
 from app.core.metrics import record_ingestion_metrics
+from app.core.metadata_extraction import get_metadata_extractor
 from app.sources.directory_scanner import DirectoryScanner
+from app.core.text_extraction import extract_text_from_html
 
 router = APIRouter(prefix="/collections/{collection_id}/ingest", tags=["ingestion"])
 limiter = Limiter(key_func=get_remote_address)
@@ -29,9 +32,9 @@ logger = get_logger(__name__)
 @router.post("", response_model=IngestResponse)
 @limiter.limit("20/minute")  # 20 ingestion requests per minute
 async def ingest_documents(
-    request_obj: Request,
+    request: Request,
     collection_id: uuid.UUID,
-    request: IngestRequest,
+    ingest_request: IngestRequest,
     db: AsyncSession = Depends(get_db),
     qdrant: QdrantStorage = Depends(get_qdrant_client),
     router: ProviderRouter = Depends(get_embedding_router)
@@ -42,7 +45,7 @@ async def ingest_documents(
     logger.info(
         "ingestion_started",
         collection_id=str(collection_id),
-        num_documents=len(request.documents)
+        num_documents=len(ingest_request.documents)
     )
 
     # Verify collection exists
@@ -68,9 +71,27 @@ async def ingest_documents(
     entities_updated = 0
     all_chunk_entities: List[ChunkEntity] = []
 
-    for doc in request.documents:
+    # Get metadata extractor
+    metadata_extractor = get_metadata_extractor()
+
+    for doc in ingest_request.documents:
         # Compute content hash
         content_hash = hash_content(doc.content)
+
+        # IMPROVEMENT: Extract metadata using LLM (incremental for large docs)
+        extracted_metadata = {}
+        try:
+            extracted_metadata = await metadata_extractor.extract_document_metadata(
+                content=doc.content,
+                title=doc.title
+            )
+            logger.debug(
+                "metadata_extracted",
+                fields=list(extracted_metadata.keys()),
+                has_title=bool(extracted_metadata.get("title"))
+            )
+        except Exception as e:
+            logger.warning("metadata_extraction_failed", error=str(e), using_provided_metadata=True)
 
         # Check for source-level deduplication first (if source info provided)
         if doc.source_type and doc.source_id:
@@ -122,6 +143,16 @@ async def ingest_documents(
 
         # Create or update entity
         entity_id = f"doc_{uuid.uuid4().hex[:12]}"
+
+        # Merge extracted metadata with provided metadata
+        merged_metadata = {
+            **(doc.metadata or {}),
+            **extracted_metadata,  # LLM-extracted metadata
+        }
+        # Ensure provided title takes precedence
+        if doc.title:
+            merged_metadata["title"] = doc.title
+
         db_entity = Entity(
             collection_id=collection_id,
             entity_id=entity_id,
@@ -129,10 +160,7 @@ async def ingest_documents(
             content_hash=content_hash,
             source_type=doc.source_type,
             source_id=doc.source_id,
-            entity_metadata={
-                "title": doc.title,
-                **(doc.metadata or {})
-            }
+            entity_metadata=merged_metadata
         )
         db.add(db_entity)
         entities_inserted += 1
@@ -160,8 +188,8 @@ async def ingest_documents(
                 parent_id=entity_id,
                 chunk_index=i,
                 content=text,
-                title=doc.title,
-                metadata=doc.metadata,
+                title=doc.title or extracted_metadata.get("title"),
+                metadata=merged_metadata,  # Use merged metadata including LLM-extracted fields
                 embedding=embedding
             )
             all_chunk_entities.append(chunk)
@@ -307,6 +335,32 @@ async def ingest_file(
                 collection_id=str(collection_id)
             )
     else:
+        # IMPROVEMENT: Extract metadata using LLM
+        metadata_extractor = get_metadata_extractor()
+        extracted_metadata = {}
+        try:
+            extracted_metadata = await metadata_extractor.extract_document_metadata(
+                content=content,
+                title=doc_title
+            )
+            logger.debug(
+                "metadata_extracted",
+                filename=file.filename,
+                fields=list(extracted_metadata.keys())
+            )
+        except Exception as e:
+            logger.warning("metadata_extraction_failed", error=str(e), filename=file.filename)
+
+        # Merge metadata
+        merged_metadata = {
+            "filename": file.filename,
+            "content_type": file.content_type,
+            **extracted_metadata
+        }
+        # Ensure provided title takes precedence
+        if doc_title:
+            merged_metadata["title"] = doc_title
+
         # Create entity with source tracking
         entity_id = f"doc_{uuid.uuid4().hex[:12]}"
         db_entity = Entity(
@@ -316,11 +370,7 @@ async def ingest_file(
             content_hash=content_hash,
             source_type=source_type,
             source_id=source_id,
-            entity_metadata={
-                "title": doc_title,
-                "filename": file.filename,
-                "content_type": file.content_type
-            }
+            entity_metadata=merged_metadata
         )
         db.add(db_entity)
         entities_inserted += 1
@@ -345,11 +395,8 @@ async def ingest_file(
                 parent_id=entity_id,
                 chunk_index=i,
                 content=text,
-                title=doc_title,
-                metadata={
-                    "filename": file.filename,
-                    "content_type": file.content_type
-                },
+                title=doc_title or extracted_metadata.get("title"),
+                metadata=merged_metadata,  # Use merged metadata including LLM-extracted fields
                 embedding=embedding
             )
             all_chunk_entities.append(chunk)
@@ -394,12 +441,257 @@ async def ingest_file(
     )
 
 
+@router.post("/html", response_model=IngestResponse)
+@limiter.limit("20/minute")  # 20 ingestion requests per minute
+async def ingest_html(
+    request: Request,
+    collection_id: uuid.UUID,
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    qdrant: QdrantStorage = Depends(get_qdrant_client),
+    router: ProviderRouter = Depends(get_embedding_router)
+):
+    """Ingest an HTML file into a collection.
+
+    Args:
+        collection_id: UUID of the collection to ingest into
+        file: Uploaded HTML file
+        title: Optional title for the document (defaults to filename)
+
+    Returns:
+        IngestResponse with processing statistics
+
+    Raises:
+        HTTPException: If collection not found or file is invalid
+    """
+    start_time = time.time()
+
+    logger.info(
+        "html_ingestion_started",
+        collection_id=str(collection_id),
+        filename=file.filename
+    )
+
+    # Verify collection exists
+    result = await db.execute(
+        select(Collection).where(Collection.id == collection_id)
+    )
+    collection = result.scalar_one_or_none()
+
+    if not collection:
+        logger.warning("collection_not_found", collection_id=str(collection_id))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Collection {collection_id} not found"
+        )
+
+    # Read file content
+    try:
+        content_bytes = await file.read()
+        html_content = content_bytes.decode('utf-8')
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be valid UTF-8 encoded text"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error reading file: {str(e)}"
+        )
+
+    if not html_content.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File content cannot be empty"
+        )
+
+    # Extract clean text from HTML
+    try:
+        content = extract_text_from_html(html_content, preserve_structure=True)
+        logger.info(
+            "html_text_extracted",
+            filename=file.filename,
+            html_size=len(html_content),
+            text_size=len(content),
+            reduction_pct=f"{(1 - len(content)/len(html_content))*100:.1f}%"
+        )
+    except Exception as e:
+        logger.warning(
+            "html_extraction_fallback",
+            filename=file.filename,
+            error=str(e)
+        )
+        # Fallback to using HTML as-is if extraction fails
+        content = html_content
+
+    if not content.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Extracted content cannot be empty"
+        )
+
+    # Use filename as title if not provided
+    doc_title = title or file.filename or "Untitled Document"
+
+    # Compute content hash
+    content_hash = hash_content(content)
+
+    # Source tracking for HTML file uploads
+    source_type = "html_upload"
+    source_id = file.filename  # Use filename as source ID
+
+    # Check for source-level deduplication
+    source_result = await db.execute(
+        select(Entity).where(
+            Entity.collection_id == collection_id,
+            Entity.source_type == source_type,
+            Entity.source_id == source_id
+        )
+    )
+    existing_source_entity = source_result.scalar_one_or_none()
+
+    documents_processed = 0
+    chunks_created = 0
+    entities_inserted = 0
+    entities_updated = 0
+
+    if existing_source_entity:
+        # Same file already uploaded
+        if existing_source_entity.content_hash == content_hash:
+            # Content unchanged, skip
+            entities_updated += 1
+            logger.info(
+                "html_already_ingested",
+                filename=file.filename,
+                collection_id=str(collection_id)
+            )
+    else:
+        # IMPROVEMENT: Extract metadata using LLM
+        metadata_extractor = get_metadata_extractor()
+        extracted_metadata = {}
+        try:
+            extracted_metadata = await metadata_extractor.extract_document_metadata(
+                content=content,
+                title=doc_title
+            )
+            logger.debug(
+                "metadata_extracted",
+                filename=file.filename,
+                fields=list(extracted_metadata.keys())
+            )
+        except Exception as e:
+            logger.warning("metadata_extraction_failed", error=str(e), filename=file.filename)
+
+        # Merge metadata
+        html_merged_metadata = {
+            "filename": file.filename,
+            "content_type": file.content_type,
+            **extracted_metadata
+        }
+        # Ensure provided title takes precedence
+        if doc_title:
+            html_merged_metadata["title"] = doc_title
+
+        # Create entity with source tracking
+        entity_id = f"doc_{uuid.uuid4().hex[:12]}"
+        db_entity = Entity(
+            collection_id=collection_id,
+            entity_id=entity_id,
+            entity_type="document",
+            content_hash=content_hash,
+            source_type=source_type,
+            source_id=source_id,
+            entity_metadata=html_merged_metadata
+        )
+        db.add(db_entity)
+        entities_inserted += 1
+
+        # IMPROVEMENT: Use semantic parent-child chunking
+        semantic_chunker = get_semantic_chunker()
+        hierarchical_chunks = semantic_chunker.chunk_with_hierarchy(content)
+        chunks_created += len(hierarchical_chunks)
+
+        logger.info(
+            "semantic_chunking_applied",
+            filename=file.filename,
+            total_chunks=len(hierarchical_chunks),
+            chunking_strategy="parent-child"
+        )
+
+        # Extract child chunk texts for embedding
+        chunk_texts = [chunk_meta['content'] for chunk_meta in hierarchical_chunks]
+
+        # Embed child chunks
+        embeddings, provider_name = await router.embed(
+            chunk_texts,
+            required_dimension=collection.vector_dimension
+        )
+
+        # Create chunk entities with parent-child relationships
+        all_chunk_entities: List[ChunkEntity] = []
+        for i, (chunk_meta, embedding) in enumerate(zip(hierarchical_chunks, embeddings)):
+            chunk = ChunkEntity(
+                parent_id=entity_id,
+                chunk_index=i,
+                content=chunk_meta['content'],  # Small child chunk
+                title=doc_title or extracted_metadata.get("title"),
+                metadata=html_merged_metadata,  # Use merged metadata including LLM-extracted fields
+                embedding=embedding,
+                # Parent-child fields
+                parent_content=chunk_meta.get('parent_content'),  # Large parent chunk
+                parent_chunk_id=chunk_meta.get('parent_id'),
+                is_child_chunk=True
+            )
+            all_chunk_entities.append(chunk)
+
+        # Commit entities to database
+        await db.commit()
+
+        # Upsert all chunks to Qdrant in batch
+        if all_chunk_entities:
+            await qdrant.upsert_chunks(str(collection_id), all_chunk_entities)
+
+        documents_processed += 1
+
+    processing_time_ms = int((time.time() - start_time) * 1000)
+
+    # Record metrics
+    record_ingestion_metrics(
+        collection_id=str(collection_id),
+        duration_seconds=(time.time() - start_time),
+        documents_processed=documents_processed,
+        chunks_created=chunks_created
+    )
+
+    logger.info(
+        "html_ingestion_completed",
+        collection_id=str(collection_id),
+        filename=file.filename,
+        documents_processed=documents_processed,
+        chunks_created=chunks_created,
+        entities_inserted=entities_inserted,
+        entities_updated=entities_updated,
+        processing_time_ms=processing_time_ms
+    )
+
+    return IngestResponse(
+        collection_id=collection_id,
+        documents_processed=documents_processed,
+        chunks_created=chunks_created,
+        entities_inserted=entities_inserted,
+        entities_updated=entities_updated,
+        processing_time_ms=processing_time_ms
+    )
+
+
 @router.post("/directory", response_model=IngestResponse)
 @limiter.limit("10/hour")  # Stricter limit for directory scans (resource intensive)
 async def ingest_directory(
-    request_obj: Request,
+    request: Request,
     collection_id: uuid.UUID,
-    request: DirectoryIngestRequest,
+    directory_request: DirectoryIngestRequest,
     db: AsyncSession = Depends(get_db),
     qdrant: QdrantStorage = Depends(get_qdrant_client),
     router: ProviderRouter = Depends(get_embedding_router)
@@ -424,9 +716,9 @@ async def ingest_directory(
     logger.info(
         "directory_ingestion_started",
         collection_id=str(collection_id),
-        directory_path=request.directory_path,
-        file_types=request.file_types,
-        max_files=request.max_files
+        directory_path=directory_request.directory_path,
+        file_types=directory_request.file_types,
+        max_files=directory_request.max_files
     )
 
     # Verify collection exists
@@ -445,11 +737,11 @@ async def ingest_directory(
     # Initialize directory scanner
     try:
         scanner = DirectoryScanner(
-            base_path=request.directory_path,
-            file_types=request.file_types,
-            include_paths=request.include_paths,
-            exclude_paths=request.exclude_paths,
-            max_file_size_mb=request.max_file_size_mb
+            base_path=directory_request.directory_path,
+            file_types=directory_request.file_types,
+            include_paths=directory_request.include_paths,
+            exclude_paths=directory_request.exclude_paths,
+            max_file_size_mb=directory_request.max_file_size_mb
         )
     except ValueError as e:
         raise HTTPException(
@@ -458,7 +750,7 @@ async def ingest_directory(
         )
 
     # Scan directory for files
-    files = scanner.scan(max_files=request.max_files)
+    files = scanner.scan(max_files=directory_request.max_files)
 
     if not files:
         raise HTTPException(
@@ -466,24 +758,24 @@ async def ingest_directory(
             detail="No files found matching the specified filters"
         )
 
-    if len(files) > request.max_files:
+    if len(files) > directory_request.max_files:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Found {len(files)} files, but max_files is {request.max_files}. "
+            detail=f"Found {len(files)} files, but max_files is {directory_request.max_files}. "
                    "Adjust filters or increase max_files."
         )
 
     logger.info(
         "directory_scan_completed",
         files_found=len(files),
-        directory_path=request.directory_path
+        directory_path=directory_request.directory_path
     )
 
     # Extract git metadata if requested
     git_metadata = None
     source_type = "directory"
 
-    if request.extract_git_metadata:
+    if directory_request.extract_git_metadata:
         git_metadata = scanner.extract_git_metadata()
         if git_metadata:
             source_type = "github"
@@ -561,11 +853,11 @@ async def ingest_directory(
     )
 
     # Use existing ingestion logic
-    ingest_request = IngestRequest(documents=documents)
+    ingest_req = IngestRequest(documents=documents)
     response = await ingest_documents(
-        request_obj=request_obj,
+        request=request,
         collection_id=collection_id,
-        request=ingest_request,
+        ingest_request=ingest_req,
         db=db,
         qdrant=qdrant,
         router=router
@@ -574,7 +866,7 @@ async def ingest_directory(
     logger.info(
         "directory_ingestion_completed",
         collection_id=str(collection_id),
-        directory_path=request.directory_path,
+        directory_path=directory_request.directory_path,
         documents_processed=response.documents_processed,
         chunks_created=response.chunks_created,
         entities_inserted=response.entities_inserted,

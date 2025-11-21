@@ -28,6 +28,38 @@ class Settings(BaseSettings):
     gemini_api_key: Optional[str] = Field(default="dummy-key-replace-later", description="Google Gemini API key")
     ollama_url: str = Field(default="http://localhost:11434", description="Ollama server URL")
 
+    # Ollama Model Configuration
+    ollama_embedding_model: str = Field(
+        default="nomic-embed-text",
+        description="Ollama embedding model name (e.g., nomic-embed-text, mxbai-embed-large)"
+    )
+    ollama_llm_model: str = Field(
+        default="qwen3-vl:4b",
+        description="Ollama LLM model name (e.g., llama3.1:8b, llama3.2, mistral, qwen2.5)"
+    )
+    ollama_embedding_dimension: int = Field(
+        default=768,
+        description="Ollama embedding model dimension (768 for nomic-embed-text, 1024 for mxbai-embed-large)"
+    )
+    ollama_context_window: int = Field(
+        default=4096,
+        description="Ollama model context window size in tokens (llama3.1:8b=128k, llama3.2=128k, mistral=32k)"
+    )
+
+    # Cross-Encoder Re-ranking
+    enable_reranking: bool = Field(
+        default=True,
+        description="Enable cross-encoder re-ranking for improved search relevance"
+    )
+    reranker_model: str = Field(
+        default="BAAI/bge-reranker-base",
+        description="HuggingFace model for re-ranking (bge-reranker-base, ms-marco-MiniLM-L-6-v2)"
+    )
+    reranker_top_k: int = Field(
+        default=20,
+        description="Number of top candidates to re-rank (higher = better quality, slower)"
+    )
+
     # Source Integrations
     github_token: Optional[str] = Field(default=None, description="GitHub personal access token")
     gmail_client_id: Optional[str] = Field(default=None, description="Gmail OAuth client ID")
