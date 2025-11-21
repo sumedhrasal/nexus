@@ -20,7 +20,7 @@ def reciprocal_rank_fusion(
     Formula: RRF_score(d) = sum over all rankings r: 1 / (k + r(d))
 
     Args:
-        result_lists: List of result lists, each containing dicts with 'entity_id' and other fields
+        result_lists: List of result lists, each containing dicts with 'chunk_id' and other fields
         k: Constant to avoid division by zero and reduce impact of high ranks (default: 60)
 
     Returns:
@@ -39,23 +39,25 @@ def reciprocal_rank_fusion(
         return result_lists[0]
 
     # Calculate RRF scores
+    # FIXED: Use chunk_id instead of entity_id for parent-child chunking
+    # Multiple child chunks share the same entity_id but have unique chunk_ids
     rrf_scores: Dict[str, float] = {}
-    entity_data: Dict[str, Dict] = {}
+    chunk_data: Dict[str, Dict] = {}
 
     for result_list in result_lists:
         for rank, result in enumerate(result_list, start=1):
-            entity_id = result["entity_id"]
+            chunk_id = result["chunk_id"]
 
             # Add RRF score contribution from this ranking
             score_contribution = 1.0 / (k + rank)
-            rrf_scores[entity_id] = rrf_scores.get(entity_id, 0.0) + score_contribution
+            rrf_scores[chunk_id] = rrf_scores.get(chunk_id, 0.0) + score_contribution
 
-            # Store entity data (use first occurrence)
-            if entity_id not in entity_data:
-                entity_data[entity_id] = result
+            # Store chunk data (use first occurrence)
+            if chunk_id not in chunk_data:
+                chunk_data[chunk_id] = result
 
     # Sort by RRF score
-    ranked_entities = sorted(
+    ranked_chunks = sorted(
         rrf_scores.items(),
         key=lambda x: x[1],
         reverse=True
@@ -63,8 +65,8 @@ def reciprocal_rank_fusion(
 
     # Build final result list with RRF scores
     results = []
-    for entity_id, rrf_score in ranked_entities:
-        result = entity_data[entity_id].copy()
+    for chunk_id, rrf_score in ranked_chunks:
+        result = chunk_data[chunk_id].copy()
         result["score"] = rrf_score  # Replace original score with RRF score
         result["ranking_method"] = "rrf"
         results.append(result)
@@ -72,7 +74,7 @@ def reciprocal_rank_fusion(
     logger.debug(
         "rrf_fusion_completed",
         num_lists=len(result_lists),
-        unique_entities=len(results),
+        unique_chunks=len(results),
         top_score=results[0]["score"] if results else 0
     )
 

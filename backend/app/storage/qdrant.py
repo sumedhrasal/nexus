@@ -105,8 +105,18 @@ class QdrantStorage:
                 }
 
                 # Add parent-child hierarchy fields if present
+                # Note: Keep parent_content moderate to avoid HTTP timeouts
                 if hasattr(chunk, 'parent_content') and chunk.parent_content:
-                    payload["parent_content"] = chunk.parent_content
+                    # Truncate parent content to avoid HTTP write timeouts
+                    parent_content = chunk.parent_content
+                    max_parent_size = 5000  # ~5KB limit (conservative for batch uploads)
+                    if len(parent_content) > max_parent_size:
+                        logger.debug(
+                            f"Parent content truncated from {len(parent_content)} to {max_parent_size} chars"
+                        )
+                        parent_content = parent_content[:max_parent_size] + "... [truncated]"
+                    payload["parent_content"] = parent_content
+
                 if hasattr(chunk, 'parent_chunk_id') and chunk.parent_chunk_id:
                     payload["parent_chunk_id"] = chunk.parent_chunk_id
                 if hasattr(chunk, 'is_child_chunk'):
@@ -128,7 +138,16 @@ class QdrantStorage:
                 logger.info(f"Upserted {len(points)} chunks to {collection_name}")
 
         except Exception as e:
-            logger.error(f"Failed to upsert chunks to {collection_name}: {e}")
+            logger.error(
+                f"Failed to upsert chunks to {collection_name}: {e}",
+                exc_info=True,
+                extra={
+                    "collection_name": collection_name,
+                    "num_chunks": len(chunks),
+                    "error_type": type(e).__name__,
+                    "error_details": str(e)
+                }
+            )
             raise
 
     async def search(

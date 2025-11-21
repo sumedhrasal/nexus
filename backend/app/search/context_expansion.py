@@ -156,8 +156,11 @@ async def _get_chunks_by_index_range(
     # For now, we'll do a scroll and filter client-side
     # In production, you'd want to add proper filtering in Qdrant
 
+    # FIXED: Add nexus_ prefix to collection name
+    collection_name = f"nexus_{collection_id}"
+
     results, _ = await qdrant.client.scroll(
-        collection_name=collection_id,
+        collection_name=collection_name,
         scroll_filter={
             "must": [
                 {

@@ -1,20 +1,20 @@
 """Response synthesis service for RAG (Retrieval-Augmented Generation)."""
 
 from typing import List, Dict, Any, Optional, Tuple
-from app.core.providers.ollama import OllamaProvider
+from app.core.providers.router import ProviderRouter
 from app.models.schemas import SearchResult
 
 
 class ResponseSynthesisService:
     """Service for synthesizing answers from search results using LLM."""
 
-    def __init__(self, provider: Optional[OllamaProvider] = None):
+    def __init__(self, provider: Optional[ProviderRouter] = None):
         """Initialize response synthesis service.
 
         Args:
-            provider: Ollama provider instance (creates new one if not provided)
+            provider: ProviderRouter instance (creates new one if not provided)
         """
-        self.provider = provider or OllamaProvider()
+        self.provider = provider or ProviderRouter()
 
     async def synthesize_answer(
         self,
@@ -59,8 +59,8 @@ Question: {query}
 Please provide a concise answer based on the context above."""
 
         try:
-            # Generate synthesized answer using Ollama
-            answer = await self.provider.generate(
+            # Generate synthesized answer using ProviderRouter (tries providers in order)
+            answer, provider_name = await self.provider.generate(
                 prompt=user_prompt,
                 system=system_prompt
             )
@@ -112,30 +112,27 @@ Please provide a concise answer based on the context above."""
 
         context_parts = []
 
-        # High relevance section - full parent context
+        # High relevance section - use full chunk content
         if high_relevance:
             context_parts.append("=== HIGHLY RELEVANT CONTEXT ===\n")
             for i, result in enumerate(high_relevance, 1):
                 title_text = f"[{result.title}]\n" if result.title else ""
 
-                # Use parent content if available (large context)
-                content = result.metadata.get("parent_content") if hasattr(result, "metadata") and result.metadata else None
-                if not content:
-                    # Fallback to expanded content
-                    content = result.metadata.get("expanded_content", result.content) if hasattr(result, "metadata") and result.metadata else result.content
+                # NOTE: Parent-child chunking disabled, using simple content
+                content = result.content
 
                 context_parts.append(
                     f"{i}. {title_text}{content}\n(Relevance: {result.score:.2f})"
                 )
 
-        # Medium relevance section - expanded context
+        # Medium relevance section
         if medium_relevance:
             context_parts.append("\n=== MODERATELY RELEVANT CONTEXT ===\n")
             for i, result in enumerate(medium_relevance, 1):
                 title_text = f"[{result.title}]\n" if result.title else ""
 
-                # Use expanded content if available
-                content = result.metadata.get("expanded_content", result.content) if hasattr(result, "metadata") and result.metadata else result.content
+                # NOTE: Parent-child chunking disabled, using simple content
+                content = result.content
 
                 context_parts.append(
                     f"{i}. {title_text}{content}\n(Relevance: {result.score:.2f})"

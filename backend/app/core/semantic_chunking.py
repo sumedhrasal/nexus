@@ -19,10 +19,10 @@ class SemanticChunker:
 
     def __init__(
         self,
-        parent_chunk_size: int = 2000,  # ~500 tokens
-        child_chunk_size: int = 400,     # ~100 tokens
-        parent_overlap: int = 200,       # 10% overlap
-        child_overlap: int = 40          # 10% overlap
+        parent_chunk_size: int = 4000,  # ~1000 tokens (fits in 5KB with margin)
+        child_chunk_size: int = 500,     # ~125 tokens
+        parent_overlap: int = 400,       # 10% overlap
+        child_overlap: int = 50          # 10% overlap
     ):
         """Initialize semantic chunker.
 

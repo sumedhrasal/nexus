@@ -41,6 +41,7 @@ class DocumentCreate(BaseModel):
 class IngestRequest(BaseModel):
     """Ingest documents request."""
     documents: List[DocumentCreate] = Field(..., min_items=1)
+    provider: Optional[str] = Field(default=None, description="Optional provider override (ollama, gemini, openai)")
 
 
 class IngestResponse(BaseModel):
@@ -81,18 +82,25 @@ class DirectoryIngestRequest(BaseModel):
         description="Extract repo name and commit SHA from .git directory"
     )
 
+    # Provider override
+    provider: Optional[str] = Field(
+        default=None,
+        description="Optional provider override (ollama, gemini, openai)"
+    )
+
 
 # Search Schemas
 class SearchRequest(BaseModel):
     """Search request."""
     query: str = Field(..., min_length=1)
-    limit: int = Field(default=10, ge=1, le=100)
+    limit: int = Field(default=40, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
     use_cache: bool = Field(default=True)
     expand_query: bool = Field(default=False, description="Use LLM to expand query into multiple variations")
     synthesize: bool = Field(default=False, description="Generate a synthesized answer from search results using LLM")
     hybrid: bool = Field(default=True, description="Use hybrid search (dense + BM25)")
     filters: Optional[Dict[str, Any]] = None
+    provider: Optional[str] = Field(default=None, description="Optional provider override (ollama, gemini, openai)")
 
 
 class SearchResult(BaseModel):

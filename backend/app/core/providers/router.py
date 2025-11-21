@@ -235,6 +235,41 @@ class ProviderRouter:
             raise RuntimeError("No providers available")
         return self.providers[0].get_embedding_dimension()
 
+    def filter_by_provider_name(self, provider_name: str) -> 'ProviderRouter':
+        """Create a new router instance filtered to specific provider.
+
+        Args:
+            provider_name: Provider name to filter to ("ollama", "gemini", "openai")
+
+        Returns:
+            New ProviderRouter with only the specified provider
+
+        Raises:
+            ValueError: If provider not found or not available
+        """
+        matching_providers = [
+            p for p in self.providers
+            if p.name.lower() == provider_name.lower()
+        ]
+
+        if not matching_providers:
+            available = [p.name for p in self.providers]
+            raise ValueError(
+                f"Provider '{provider_name}' not available. "
+                f"Available providers: {available}"
+            )
+
+        # Create new router with filtered providers
+        filtered_router = ProviderRouter.__new__(ProviderRouter)
+        filtered_router.strategy = self.strategy
+        filtered_router.use_cache = self.use_cache
+        filtered_router.cache = self.cache
+        filtered_router.providers = matching_providers
+
+        logger.info(f"Created filtered router for provider: {provider_name}")
+
+        return filtered_router
+
     def get_provider_info(self) -> List[dict]:
         """Get information about all providers.
 

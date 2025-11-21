@@ -15,7 +15,8 @@ from app.api.dependencies import get_db, get_qdrant_client, get_embedding_router
 from app.storage.qdrant import QdrantStorage
 from app.core.providers.router import ProviderRouter
 from app.core.chunking import get_chunker
-from app.core.semantic_chunking import get_semantic_chunker
+# DISABLED: Parent-child chunking (keeping for future tuning)
+# from app.core.semantic_chunking import get_semantic_chunker
 from app.core.hashing import hash_content
 from app.core.entities import ChunkEntity
 from app.core.logging import get_logger
@@ -36,8 +37,7 @@ async def ingest_documents(
     collection_id: uuid.UUID,
     ingest_request: IngestRequest,
     db: AsyncSession = Depends(get_db),
-    qdrant: QdrantStorage = Depends(get_qdrant_client),
-    router: ProviderRouter = Depends(get_embedding_router)
+    qdrant: QdrantStorage = Depends(get_qdrant_client)
 ):
     """Ingest documents into a collection."""
     start_time = time.time()
@@ -60,6 +60,14 @@ async def ingest_documents(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Collection {collection_id} not found"
         )
+
+    # Get provider router filtered to collection's embedding provider
+    from app.api.dependencies import get_collection_router
+    router = await get_collection_router(
+        collection_id=collection_id,
+        provider_override=ingest_request.provider,
+        db=db
+    )
 
     # Get chunker
     chunker = get_chunker()
@@ -240,9 +248,9 @@ async def ingest_file(
     collection_id: uuid.UUID,
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
+    provider: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
-    qdrant: QdrantStorage = Depends(get_qdrant_client),
-    router: ProviderRouter = Depends(get_embedding_router)
+    qdrant: QdrantStorage = Depends(get_qdrant_client)
 ):
     """Ingest a markdown file into a collection.
 
@@ -250,6 +258,7 @@ async def ingest_file(
         collection_id: UUID of the collection to ingest into
         file: Uploaded file (markdown format)
         title: Optional title for the document (defaults to filename)
+        provider: Optional provider override (ollama, gemini, openai)
 
     Returns:
         IngestResponse with processing statistics
@@ -277,6 +286,14 @@ async def ingest_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Collection {collection_id} not found"
         )
+
+    # Get provider router filtered to collection's embedding provider
+    from app.api.dependencies import get_collection_router
+    router = await get_collection_router(
+        collection_id=collection_id,
+        provider_override=provider,
+        db=db
+    )
 
     # Read file content
     try:
@@ -448,9 +465,9 @@ async def ingest_html(
     collection_id: uuid.UUID,
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
+    provider: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
-    qdrant: QdrantStorage = Depends(get_qdrant_client),
-    router: ProviderRouter = Depends(get_embedding_router)
+    qdrant: QdrantStorage = Depends(get_qdrant_client)
 ):
     """Ingest an HTML file into a collection.
 
@@ -458,6 +475,7 @@ async def ingest_html(
         collection_id: UUID of the collection to ingest into
         file: Uploaded HTML file
         title: Optional title for the document (defaults to filename)
+        provider: Optional provider override (ollama, gemini, openai)
 
     Returns:
         IngestResponse with processing statistics
@@ -485,6 +503,14 @@ async def ingest_html(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Collection {collection_id} not found"
         )
+
+    # Get provider router filtered to collection's embedding provider
+    from app.api.dependencies import get_collection_router
+    router = await get_collection_router(
+        collection_id=collection_id,
+        provider_override=provider,
+        db=db
+    )
 
     # Read file content
     try:
@@ -608,41 +634,36 @@ async def ingest_html(
         db.add(db_entity)
         entities_inserted += 1
 
-        # IMPROVEMENT: Use semantic parent-child chunking
-        semantic_chunker = get_semantic_chunker()
-        hierarchical_chunks = semantic_chunker.chunk_with_hierarchy(content)
-        chunks_created += len(hierarchical_chunks)
+        # DISABLED: Parent-child chunking (for future tuning)
+        # Use simple token-aware chunking instead
+        from app.core.chunking import get_chunker
+        chunker = get_chunker(smart=True)  # SmartChunker preserves paragraphs
+        chunk_texts = chunker.chunk(content)
+        chunks_created += len(chunk_texts)
 
         logger.info(
-            "semantic_chunking_applied",
+            "simple_chunking_applied",
             filename=file.filename,
-            total_chunks=len(hierarchical_chunks),
-            chunking_strategy="parent-child"
+            total_chunks=len(chunk_texts),
+            chunking_strategy="simple"
         )
 
-        # Extract child chunk texts for embedding
-        chunk_texts = [chunk_meta['content'] for chunk_meta in hierarchical_chunks]
-
-        # Embed child chunks
+        # Embed chunks
         embeddings, provider_name = await router.embed(
             chunk_texts,
             required_dimension=collection.vector_dimension
         )
 
-        # Create chunk entities with parent-child relationships
+        # Create chunk entities (simple chunking, no parent-child)
         all_chunk_entities: List[ChunkEntity] = []
-        for i, (chunk_meta, embedding) in enumerate(zip(hierarchical_chunks, embeddings)):
+        for i, (chunk_text, embedding) in enumerate(zip(chunk_texts, embeddings)):
             chunk = ChunkEntity(
                 parent_id=entity_id,
                 chunk_index=i,
-                content=chunk_meta['content'],  # Small child chunk
+                content=chunk_text,
                 title=doc_title or extracted_metadata.get("title"),
                 metadata=html_merged_metadata,  # Use merged metadata including LLM-extracted fields
-                embedding=embedding,
-                # Parent-child fields
-                parent_content=chunk_meta.get('parent_content'),  # Large parent chunk
-                parent_chunk_id=chunk_meta.get('parent_id'),
-                is_child_chunk=True
+                embedding=embedding
             )
             all_chunk_entities.append(chunk)
 
@@ -693,8 +714,7 @@ async def ingest_directory(
     collection_id: uuid.UUID,
     directory_request: DirectoryIngestRequest,
     db: AsyncSession = Depends(get_db),
-    qdrant: QdrantStorage = Depends(get_qdrant_client),
-    router: ProviderRouter = Depends(get_embedding_router)
+    qdrant: QdrantStorage = Depends(get_qdrant_client)
 ):
     """Ingest files from a local directory (e.g., cloned git repository).
 
@@ -733,6 +753,14 @@ async def ingest_directory(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Collection {collection_id} not found"
         )
+
+    # Get provider router filtered to collection's embedding provider
+    from app.api.dependencies import get_collection_router
+    router = await get_collection_router(
+        collection_id=collection_id,
+        provider_override=directory_request.provider,
+        db=db
+    )
 
     # Initialize directory scanner
     try:

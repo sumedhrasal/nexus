@@ -44,8 +44,7 @@ async def search_collection(
     collection_id: uuid.UUID,
     search_request: SearchRequest,
     db: AsyncSession = Depends(get_db),
-    qdrant: QdrantStorage = Depends(get_qdrant_client),
-    router: ProviderRouter = Depends(get_embedding_router)
+    qdrant: QdrantStorage = Depends(get_qdrant_client)
 ):
     """Search a collection with optional query expansion and response synthesis."""
     start_time = time.time()
@@ -70,6 +69,14 @@ async def search_collection(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Collection {collection_id} not found"
         )
+
+    # Get provider router filtered to collection's embedding provider
+    from app.api.dependencies import get_collection_router
+    router = await get_collection_router(
+        collection_id=collection_id,
+        provider_override=search_request.provider,
+        db=db
+    )
 
     # IMPROVEMENT: Query reformulation (convert natural language to search-friendly)
     reformulated_query = search_request.query
@@ -210,18 +217,19 @@ async def search_collection(
     else:
         merged_results = merged_results[:search_request.limit]
 
-    # IMPROVEMENT: Expand context windows for better synthesis
-    try:
-        merged_results = await expand_context_windows(
-            results=merged_results,
-            db=db,
-            qdrant=qdrant,
-            collection_id=str(collection_id),
-            window_size=1  # Include 1 chunk before and after
-        )
-        logger.debug("context_windows_expanded", num_results=len(merged_results))
-    except Exception as e:
-        logger.warning("context_expansion_failed", error=str(e), using_original_results=True)
+    # IMPROVEMENT: Context expansion disabled for parent-child chunking
+    # Parent content is already stored with each child chunk, so no need to fetch surrounding chunks
+    # try:
+    #     merged_results = await expand_context_windows(
+    #         results=merged_results,
+    #         db=db,
+    #         qdrant=qdrant,
+    #         collection_id=str(collection_id),
+    #         window_size=1  # Include 1 chunk before and after
+    #     )
+    #     logger.debug("context_windows_expanded", num_results=len(merged_results))
+    # except Exception as e:
+    #     logger.warning("context_expansion_failed", error=str(e), using_original_results=True)
 
     # Format results
     results = [

@@ -29,26 +29,28 @@ class HybridSearch:
 
         Args:
             dense_results: Results from dense vector search
-            bm25_scores: BM25 scores by entity_id
+            bm25_scores: BM25 scores by chunk_id
             limit: Maximum results to return
 
         Returns:
             Combined and ranked results
         """
-        # Prepare rankings for RRF
-        dense_ranking = [(r["entity_id"], r["score"]) for r in dense_results]
+        # FIXED: Use chunk_id instead of entity_id for parent-child chunking
+        # Multiple child chunks share the same entity_id (parent document)
+        # but have unique chunk_ids
+        dense_ranking = [(r["chunk_id"], r["score"]) for r in dense_results]
         bm25_ranking = sorted(bm25_scores.items(), key=lambda x: x[1], reverse=True)
 
         # Apply RRF
         fused_scores = reciprocal_rank_fusion([dense_ranking, bm25_ranking])
 
         # Map back to full results
-        result_map = {r["entity_id"]: r for r in dense_results}
+        result_map = {r["chunk_id"]: r for r in dense_results}
         combined = []
 
-        for entity_id, rrf_score in fused_scores[:limit]:
-            if entity_id in result_map:
-                result = result_map[entity_id].copy()
+        for chunk_id, rrf_score in fused_scores[:limit]:
+            if chunk_id in result_map:
+                result = result_map[chunk_id].copy()
                 result["score"] = rrf_score  # Use RRF score
                 combined.append(result)
 
@@ -66,14 +68,15 @@ class HybridSearch:
             documents: List of documents with 'content' field
 
         Returns:
-            Dict mapping entity_id to BM25 score
+            Dict mapping chunk_id to BM25 score
         """
         if not documents:
             return {}
 
         # Extract corpus
         corpus = [doc["content"] for doc in documents]
-        entity_ids = [doc["entity_id"] for doc in documents]
+        # FIXED: Use chunk_id instead of entity_id for parent-child chunking
+        chunk_ids = [doc["chunk_id"] for doc in documents]
 
         # Fit BM25 on corpus
         self.bm25.fit(corpus)
@@ -81,8 +84,8 @@ class HybridSearch:
         # Get scores
         scores = self.bm25.get_scores(query, corpus)
 
-        # Map to entity IDs
-        return {entity_ids[i]: scores[i] for i in range(len(entity_ids))}
+        # Map to chunk IDs
+        return {chunk_ids[i]: scores[i] for i in range(len(chunk_ids))}
 
 
 async def hybrid_search(

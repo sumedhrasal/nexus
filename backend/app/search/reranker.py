@@ -89,7 +89,14 @@ class CrossEncoderReranker:
             self._lazy_load_model()
 
             # Prepare query-document pairs
-            pairs = [[query, result["content"]] for result in results[:top_k]]
+            # NOTE: Parent-child chunking disabled, using simple content
+            pairs = []
+            for result in results[:top_k]:
+                content = result["content"]
+                # Truncate to max_length if needed (cross-encoder has 512 token limit)
+                if len(content) > 2000:  # ~500 tokens
+                    content = content[:2000]
+                pairs.append([query, content])
 
             logger.debug(
                 "reranking_started",

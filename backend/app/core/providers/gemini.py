@@ -29,7 +29,7 @@ class GeminiProvider(BaseProvider):
 
         genai.configure(api_key=self.api_key)
         self.embed_model_name = "models/text-embedding-004"
-        self.llm_model_name = "gemini-2.0-flash-exp"
+        self.llm_model_name = "gemini-2.5-flash-exp"
         self.dimension = 768
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
