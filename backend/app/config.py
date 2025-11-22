@@ -106,6 +106,16 @@ class Settings(BaseSettings):
         description="Maximum character length for parent_content in Qdrant payloads (prevents HTTP timeouts)"
     )
 
+    # Metadata Extraction
+    metadata_prompt_overhead: int = Field(
+        default=800,
+        description="Reserved tokens for system/user prompts and response in metadata extraction (system~200, user~100, response~500)"
+    )
+    metadata_chunk_max_tokens: int = Field(
+        default=500,
+        description="Maximum tokens for quick chunk metadata extraction (smaller = faster)"
+    )
+
     # Source Integrations
     github_token: Optional[str] = Field(default=None, description="GitHub personal access token")
     gmail_client_id: Optional[str] = Field(default=None, description="Gmail OAuth client ID")

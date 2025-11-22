@@ -29,7 +29,7 @@ class OllamaProvider(BaseProvider):
         self.embed_model = settings.ollama_embedding_model
         self.llm_model = settings.ollama_llm_model
         self.dimension = settings.ollama_embedding_dimension
-        self.timeout = 300
+        self.timeout = 600
 
         self.client = httpx.AsyncClient(
             timeout=self.timeout,

@@ -90,12 +90,18 @@ Return ONLY a JSON object with these fields (all optional):
 }"""
 
         context_note = "complete document" if is_complete else "document excerpt"
+
+        # Calculate max tokens for content
+        # Reserve space for system prompt, user prompt structure, and response
+        max_content_tokens = self.context_window - settings.metadata_prompt_overhead
+        truncated_content = truncate_to_token_limit(content, max_content_tokens)
+
         user_prompt = f"""Extract metadata from this {context_note}:
 
 Title: {title or 'Unknown'}
 
 Content:
-{content[:2000]}{"..." if len(content) > 2000 else ""}
+{truncated_content}
 
 Return only the JSON object."""
 
@@ -275,9 +281,12 @@ Return only the JSON object."""
   "entities": ["entity1", "entity2"]
 }"""
 
+        # Use configurable limit for quick chunk metadata extraction (fast processing)
+        truncated_chunk = truncate_to_token_limit(chunk, settings.metadata_chunk_max_tokens)
+
         user_prompt = f"""Analyze this text chunk:
 
-{chunk[:1000]}
+{truncated_chunk}
 
 Return only JSON."""
 
