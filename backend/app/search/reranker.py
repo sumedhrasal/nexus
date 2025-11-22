@@ -30,10 +30,11 @@ class CrossEncoderReranker:
 
             logger.info(
                 "loading_reranker_model",
-                model=self.model_name
+                model=self.model_name,
+                max_length=settings.reranker_max_length
             )
 
-            self.model = CrossEncoder(self.model_name, max_length=512)
+            self.model = CrossEncoder(self.model_name, max_length=settings.reranker_max_length)
             self._initialized = True
 
             logger.info("reranker_model_loaded", model=self.model_name)
@@ -93,9 +94,12 @@ class CrossEncoderReranker:
             pairs = []
             for result in results[:top_k]:
                 content = result["content"]
-                # Truncate to max_length if needed (cross-encoder has 512 token limit)
-                if len(content) > 2000:  # ~500 tokens
-                    content = content[:2000]
+                # Truncate to prevent exceeding cross-encoder max_length
+                # Conservative estimate: 4 chars ≈ 1 token, leave room for query
+                # Cross-encoder will handle final truncation, this is just optimization
+                max_chars = (settings.reranker_max_length - 50) * 4  # Leave 50 tokens for query
+                if len(content) > max_chars:
+                    content = content[:max_chars]
                 pairs.append([query, content])
 
             logger.debug(

@@ -55,9 +55,19 @@ class Settings(BaseSettings):
         default="BAAI/bge-reranker-base",
         description="HuggingFace model for re-ranking (bge-reranker-base, ms-marco-MiniLM-L-6-v2)"
     )
+    reranker_max_length: int = Field(
+        default=512,
+        description="Maximum token length for cross-encoder model (bge-reranker-base=512, ms-marco=512)"
+    )
     reranker_top_k: int = Field(
         default=20,
         description="Number of top candidates to re-rank (higher = better quality, slower)"
+    )
+
+    # Qdrant Storage
+    qdrant_max_payload_size: int = Field(
+        default=5000,
+        description="Maximum character length for parent_content in Qdrant payloads (prevents HTTP timeouts)"
     )
 
     # Source Integrations

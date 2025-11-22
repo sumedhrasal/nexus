@@ -290,6 +290,34 @@ curl http://localhost:8000/health
 
 ## 🎯 Configuration
 
+### Ollama Model Configuration
+
+Customize which Ollama models to use for embeddings and LLM:
+
+```bash
+# Embedding model (affects vector dimension)
+OLLAMA_EMBEDDING_MODEL=nomic-embed-text  # 768d, fast, good quality
+# Alternatives:
+# - mxbai-embed-large (1024d, higher quality, slower)
+# - all-minilm (384d, fastest, lower quality)
+
+# LLM model for query expansion and synthesis
+OLLAMA_LLM_MODEL=llama3.1:8b  # 8B parameters, good balance
+# Alternatives:
+# - llama3.2 (smaller, faster)
+# - mistral (good for reasoning)
+# - qwen2.5 (multilingual)
+# - gemma2 (Google model)
+
+# Must match your embedding model's dimension!
+OLLAMA_EMBEDDING_DIMENSION=768  # nomic-embed-text=768, mxbai=1024, all-minilm=384
+```
+
+**Important**: If you change the embedding model, you must:
+1. Update `OLLAMA_EMBEDDING_DIMENSION` to match
+2. Update `vector_dimension` when creating new collections
+3. Pull the new model: `docker exec nexus-ollama ollama pull <model-name>`
+
 ### Provider Selection Strategy
 
 Set in `.env`:

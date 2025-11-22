@@ -107,9 +107,9 @@ class QdrantStorage:
                 # Add parent-child hierarchy fields if present
                 # Note: Keep parent_content moderate to avoid HTTP timeouts
                 if hasattr(chunk, 'parent_content') and chunk.parent_content:
-                    # Truncate parent content to avoid HTTP write timeouts
+                    # Truncate parent content to avoid HTTP write timeouts during batch uploads
                     parent_content = chunk.parent_content
-                    max_parent_size = 5000  # ~5KB limit (conservative for batch uploads)
+                    max_parent_size = settings.qdrant_max_payload_size
                     if len(parent_content) > max_parent_size:
                         logger.debug(
                             f"Parent content truncated from {len(parent_content)} to {max_parent_size} chars"
