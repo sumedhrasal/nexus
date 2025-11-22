@@ -18,13 +18,15 @@ class OpenAIProvider(BaseProvider):
     def __init__(
         self,
         api_key: Optional[str] = None,
-        embed_model: str = "text-embedding-3-small"
+        embed_model: Optional[str] = None,
+        llm_model: Optional[str] = None
     ):
         """Initialize OpenAI provider.
 
         Args:
             api_key: OpenAI API key (default: from settings)
-            embed_model: Embedding model name (default: text-embedding-3-small)
+            embed_model: Embedding model name (default: from settings)
+            llm_model: LLM model name (default: from settings)
         """
         super().__init__(name="openai")
         self.api_key = api_key or settings.openai_api_key
@@ -33,14 +35,12 @@ class OpenAIProvider(BaseProvider):
             raise ValueError("OpenAI API key not configured. Set OPENAI_API_KEY environment variable.")
 
         self.client = AsyncOpenAI(api_key=self.api_key)
-        self.embed_model = embed_model
-        self.llm_model = "gpt-4o-mini"
 
-        # Set dimension based on model
-        if "large" in embed_model:
-            self.dimension = 3072
-        else:
-            self.dimension = 1536
+        # Load model configuration from settings
+        self.embed_model = embed_model or settings.openai_embedding_model
+        self.llm_model = llm_model or settings.openai_llm_model
+        self.dimension = settings.openai_embedding_dimension
+        self.context_window = settings.openai_context_window
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings using text-embedding-3.

@@ -29,21 +29,57 @@ class Settings(BaseSettings):
     ollama_url: str = Field(default="http://localhost:11434", description="Ollama server URL")
 
     # Ollama Model Configuration
-    ollama_embedding_model: str = Field(
-        default="nomic-embed-text",
+    ollama_embedding_model: Optional[str] = Field(
+        default=None,
         description="Ollama embedding model name (e.g., nomic-embed-text, mxbai-embed-large)"
     )
-    ollama_llm_model: str = Field(
-        default="qwen3-vl:4b",
+    ollama_llm_model: Optional[str] = Field(
+        default=None,
         description="Ollama LLM model name (e.g., llama3.1:8b, llama3.2, mistral, qwen2.5)"
     )
-    ollama_embedding_dimension: int = Field(
-        default=768,
+    ollama_embedding_dimension: Optional[int] = Field(
+        default=None,
         description="Ollama embedding model dimension (768 for nomic-embed-text, 1024 for mxbai-embed-large)"
     )
-    ollama_context_window: int = Field(
-        default=4096,
+    ollama_context_window: Optional[int] = Field(
+        default=None,
         description="Ollama model context window size in tokens (llama3.1:8b=128k, llama3.2=128k, mistral=32k)"
+    )
+
+    # Gemini Model Configuration
+    gemini_embedding_model: str = Field(
+        default="models/text-embedding-004",
+        description="Gemini embedding model name"
+    )
+    gemini_llm_model: str = Field(
+        default="gemini-2.5-flash-exp",
+        description="Gemini LLM model name (gemini-2.5-flash-exp, gemini-1.5-pro)"
+    )
+    gemini_embedding_dimension: int = Field(
+        default=768,
+        description="Gemini embedding model dimension (text-embedding-004=768)"
+    )
+    gemini_context_window: int = Field(
+        default=32768,
+        description="Gemini model context window size in tokens (gemini-2.5-flash=32k, gemini-1.5-pro=2M)"
+    )
+
+    # OpenAI Model Configuration
+    openai_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description="OpenAI embedding model name (text-embedding-3-small, text-embedding-3-large)"
+    )
+    openai_llm_model: str = Field(
+        default="gpt-4o-mini",
+        description="OpenAI LLM model name (gpt-4o-mini, gpt-4o)"
+    )
+    openai_embedding_dimension: int = Field(
+        default=1536,
+        description="OpenAI embedding model dimension (small=1536, large=3072)"
+    )
+    openai_context_window: int = Field(
+        default=8192,
+        description="OpenAI model context window size in tokens (gpt-4o-mini=128k, gpt-4o=128k)"
     )
 
     # Cross-Encoder Re-ranking

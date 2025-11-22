@@ -28,9 +28,12 @@ class GeminiProvider(BaseProvider):
             raise ValueError("Gemini API key not configured. Set GEMINI_API_KEY environment variable.")
 
         genai.configure(api_key=self.api_key)
-        self.embed_model_name = "models/text-embedding-004"
-        self.llm_model_name = "gemini-2.5-flash-exp"
-        self.dimension = 768
+
+        # Load model configuration from settings
+        self.embed_model_name = settings.gemini_embedding_model
+        self.llm_model_name = settings.gemini_llm_model
+        self.dimension = settings.gemini_embedding_dimension
+        self.context_window = settings.gemini_context_window
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings using text-embedding-004.

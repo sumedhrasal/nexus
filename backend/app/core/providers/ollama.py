@@ -29,11 +29,11 @@ class OllamaProvider(BaseProvider):
         self.embed_model = settings.ollama_embedding_model
         self.llm_model = settings.ollama_llm_model
         self.dimension = settings.ollama_embedding_dimension
-        self.timeout = 180
+        self.timeout = 300
 
         self.client = httpx.AsyncClient(
             timeout=self.timeout,
-            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+            limits=httpx.Limits(max_keepalive_connections=2, max_connections=4)
         )
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
@@ -75,57 +75,80 @@ class OllamaProvider(BaseProvider):
         from app.core.logging import get_logger
         logger = get_logger(__name__)
 
-        try:
-            payload = {
-                "model": self.llm_model,
-                "prompt": prompt,
-                "stream": False
-            }
+        # Retry logic for timeout errors
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                payload = {
+                    "model": self.llm_model,
+                    "prompt": prompt,
+                    "stream": False
+                }
 
-            if system:
-                payload["system"] = system
+                if system:
+                    payload["system"] = system
 
-            logger.debug(
-                "ollama_generate_request",
-                model=self.llm_model,
-                base_url=self.base_url,
-                prompt_length=len(prompt),
-                has_system=system is not None
-            )
+                logger.debug(
+                    "ollama_generate_request",
+                    model=self.llm_model,
+                    base_url=self.base_url,
+                    prompt_length=len(prompt),
+                    has_system=system is not None,
+                    attempt=attempt + 1,
+                    max_retries=max_retries
+                )
 
-            response = await self.client.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                timeout=self.timeout
-            )
+                response = await self.client.post(
+                    f"{self.base_url}/api/generate",
+                    json=payload,
+                    timeout=self.timeout
+                )
 
-            logger.debug(
-                "ollama_generate_response",
-                status_code=response.status_code,
-                response_length=len(response.text),
-                headers=dict(response.headers)
-            )
+                logger.debug(
+                    "ollama_generate_response",
+                    status_code=response.status_code,
+                    response_length=len(response.text),
+                    headers=dict(response.headers)
+                )
 
-            response.raise_for_status()
-            data = response.json()
+                response.raise_for_status()
+                data = response.json()
 
-            logger.debug(
-                "ollama_generate_parsed",
-                response_keys=list(data.keys()),
-                response_length=len(data.get("response", ""))
-            )
+                logger.debug(
+                    "ollama_generate_parsed",
+                    response_keys=list(data.keys()),
+                    response_length=len(data.get("response", ""))
+                )
 
-            return data["response"]
-        except Exception as e:
-            logger.error(
-                "ollama_generate_error",
-                model=self.llm_model,
-                base_url=self.base_url,
-                error=str(e),
-                error_type=type(e).__name__,
-                exc_info=True
-            )
-            raise RuntimeError(f"Ollama generation failed: {e}") from e
+                return data["response"]
+
+            except (httpx.TimeoutException, httpx.ReadTimeout) as e:
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        "ollama_generate_timeout_retry",
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                        error=str(e)
+                    )
+                    continue  # Retry
+                else:
+                    logger.error(
+                        "ollama_generate_timeout_final",
+                        attempt=attempt + 1,
+                        error=str(e)
+                    )
+                    raise RuntimeError(f"Ollama LLM generation timed out after {max_retries} attempts: {str(e)}")
+
+            except Exception as e:
+                logger.error(
+                    "ollama_generate_error",
+                    model=self.llm_model,
+                    base_url=self.base_url,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True
+                )
+                raise RuntimeError(f"Ollama generation failed: {e}") from e
 
     def get_embedding_dimension(self) -> int:
         """Get embedding dimension.

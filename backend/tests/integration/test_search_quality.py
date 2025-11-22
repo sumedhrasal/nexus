@@ -128,7 +128,7 @@ async def test_refrag_paper_search_quality():
                 json={
                     "name": collection_name,
                     "embedding_provider": "ollama",
-                    "vector_dimension": 768
+                    # "vector_dimension": 768
                 }
             )
             assert create_response.status_code == 201, f"Failed to create collection: {create_response.text}"
@@ -220,9 +220,9 @@ async def test_refrag_paper_search_quality():
         print("-" * 80)
         print(generated_answer)
         print("-" * 80)
-        print(f"\n✅ EXPECTED ANSWER:")
-        print("-" * 80)
-        print(expected_response)
+        # print(f"\n✅ EXPECTED ANSWER:")
+        # print("-" * 80)
+        # print(expected_response)
         print("-" * 80)
         print(f"\n📊 SIMILARITY METRICS:")
         print(f"   • Keyword Overlap: {similarity_metrics['keyword_overlap_pct']}% "

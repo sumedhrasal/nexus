@@ -11,7 +11,11 @@ class CollectionCreate(BaseModel):
     """Create collection request."""
     name: str = Field(..., min_length=1, max_length=255)
     embedding_provider: str = Field(default="ollama", pattern="^(ollama|gemini|openai)$")
-    vector_dimension: Optional[int] = Field(default=None, description="Auto-detected from provider if not specified")
+    vector_dimension: Optional[int] = Field(
+        default=None,
+        description="Vector dimension (auto-detected from provider if not specified). "
+                    "Examples: ollama=768/1024 (configurable), gemini=768, openai=1536/3072"
+    )
 
 
 class CollectionResponse(BaseModel):

@@ -12,9 +12,12 @@ from app.models.database import Collection, Organization
 from app.models.schemas import CollectionCreate, CollectionResponse
 from app.api.dependencies import get_db, get_qdrant_client
 from app.storage.qdrant import QdrantStorage
+from app.core.providers.router import get_provider_router
+from app.core.logging import get_logger
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 limiter = Limiter(key_func=get_remote_address)
+logger = get_logger(__name__)
 
 
 @router.post("", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
@@ -37,14 +40,45 @@ async def create_collection(
         await db.commit()
         await db.refresh(org)
 
-    # Determine vector dimension based on provider
+    # Auto-detect vector dimension from provider if not specified
     if collection.vector_dimension is None:
-        dimension_map = {
-            "ollama": 768,
-            "gemini": 768,
-            "openai": 1536
-        }
-        collection.vector_dimension = dimension_map.get(collection.embedding_provider, 768)
+        try:
+            # Get global provider router
+            router = get_provider_router()
+
+            # Filter to the requested provider
+            filtered_router = router.filter_by_provider_name(collection.embedding_provider)
+
+            # Get dimension from the provider
+            collection.vector_dimension = filtered_router.get_primary_dimension()
+
+            logger.info(
+                "auto_detected_dimension",
+                provider=collection.embedding_provider,
+                dimension=collection.vector_dimension
+            )
+        except ValueError as e:
+            # Provider not available
+            logger.error(
+                "provider_not_available",
+                provider=collection.embedding_provider,
+                error=str(e)
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Provider '{collection.embedding_provider}' is not available. {str(e)}"
+            )
+        except Exception as e:
+            logger.error(
+                "dimension_detection_failed",
+                provider=collection.embedding_provider,
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to detect dimension for provider '{collection.embedding_provider}': {str(e)}"
+            )
 
     # Create collection in database
     db_collection = Collection(
