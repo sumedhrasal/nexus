@@ -3,6 +3,7 @@
 from typing import List, Dict, Any, Optional, Tuple
 from app.core.providers.router import ProviderRouter
 from app.models.schemas import SearchResult
+from app.search.plan_schema import ExecutionPlan, SynthesisStyle
 
 
 class ResponseSynthesisService:
@@ -20,14 +21,16 @@ class ResponseSynthesisService:
         self,
         query: str,
         search_results: List[SearchResult],
-        max_context_chunks: int = 5
+        max_context_chunks: int = 5,
+        plan: Optional[ExecutionPlan] = None
     ) -> Tuple[str, int]:
-        """Synthesize a concise answer from search results.
+        """Synthesize answer from search results with plan-aware prompting.
 
         Args:
             query: Original user query
             search_results: List of search results to synthesize from
             max_context_chunks: Maximum number of chunks to use as context
+            plan: Optional execution plan for style guidance
 
         Returns:
             Tuple of (synthesized_answer, estimated_tokens_used)
@@ -42,14 +45,8 @@ class ResponseSynthesisService:
         # Count approximate tokens (rough estimate: 1 token ≈ 4 characters)
         estimated_tokens = len(context_text) // 4 + len(query) // 4 + 200  # +200 for prompt overhead
 
-        system_prompt = """You are a helpful assistant that answers questions based on the provided context.
-
-Rules:
-1. Answer the question using ONLY the information from the context provided
-2. Be concise and direct - aim for 2-4 sentences maximum
-3. If the context doesn't contain enough information, say so honestly
-4. Cite relevant information naturally without using citation markers like [1] or [2]
-5. Do not make up information or use knowledge outside the provided context"""
+        # Build plan-aware system prompt
+        system_prompt = self._build_synthesis_prompt(plan)
 
         user_prompt = f"""Context:
 {context_text}
@@ -148,6 +145,69 @@ Please provide a concise answer based on the context above."""
                 )
 
         return "\n\n".join(context_parts)
+
+    def _build_synthesis_prompt(self, plan: Optional[ExecutionPlan]) -> str:
+        """Build synthesis system prompt based on execution plan.
+
+        Args:
+            plan: Optional execution plan
+
+        Returns:
+            System prompt tailored to plan's synthesis style
+        """
+        base_rules = """You are a helpful assistant that answers questions based on the provided context.
+
+Core Rules:
+1. Answer the question using ONLY the information from the context provided
+2. If the context doesn't contain enough information, say so honestly
+3. Cite relevant information naturally without using citation markers like [1] or [2]
+4. Do not make up information or use knowledge outside the provided context"""
+
+        if not plan:
+            # Default: concise style
+            return base_rules + "\n5. Be concise and direct - aim for 2-4 sentences maximum"
+
+        # Add style-specific guidance
+        if plan.synthesis_style == SynthesisStyle.CONCISE:
+            style_guidance = """
+5. Be extremely concise and direct - aim for 2-4 sentences maximum
+6. Focus on the most essential information only
+7. Use simple, clear language"""
+
+        elif plan.synthesis_style == SynthesisStyle.STRUCTURED:
+            style_guidance = """
+5. Organize your answer with clear structure (use bullet points or sections when appropriate)
+6. Aim for 1-2 well-organized paragraphs
+7. Include key details and supporting information
+8. Use headings or bullets to improve readability"""
+
+        elif plan.synthesis_style == SynthesisStyle.COMPREHENSIVE:
+            style_guidance = """
+5. Provide a thorough, comprehensive answer covering all relevant aspects
+6. Include context, details, and examples from the provided information
+7. Organize information logically with multiple paragraphs if needed
+8. Explain concepts clearly and completely
+9. Address different facets of the question systematically"""
+
+        else:
+            style_guidance = "\n5. Be concise and direct - aim for 2-4 sentences maximum"
+
+        # Add complexity-aware guidance
+        if plan.complexity:
+            if plan.complexity.value == "simple":
+                complexity_note = "\n\nNote: This is a simple factual question - provide a direct, straightforward answer."
+            elif plan.complexity.value == "moderate":
+                complexity_note = "\n\nNote: This question requires some explanation - provide clear reasoning and context."
+            elif plan.complexity.value == "complex":
+                complexity_note = "\n\nNote: This is a multi-faceted question - address different aspects systematically."
+            elif plan.complexity.value == "research":
+                complexity_note = "\n\nNote: This requires deep analysis - provide comprehensive coverage with full context."
+            else:
+                complexity_note = ""
+        else:
+            complexity_note = ""
+
+        return base_rules + style_guidance + complexity_note
 
     async def close(self):
         """Close provider connections."""

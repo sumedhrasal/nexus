@@ -255,7 +255,8 @@ async def search_collection(
         synthesis_service = get_synthesis_service()
         synthesized_answer, tokens_used = await synthesis_service.synthesize_answer(
             query=search_request.query,
-            search_results=results
+            search_results=results,
+            plan=None  # Will be used when adaptive RAG is enabled
         )
         # Ollama is free, so cost is 0
         synthesis_cost = 0.0

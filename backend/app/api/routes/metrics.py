@@ -13,6 +13,7 @@ from app.models.schemas import (
 )
 from app.api.dependencies import get_db
 from app.search.quality_metrics import QualityMetricsService
+from app.search.plan_metrics import get_plan_metrics
 from app.core.logging import get_logger
 
 router = APIRouter(tags=["metrics"])
@@ -126,3 +127,48 @@ async def get_quality_metrics(
     )
 
     return QualityMetrics(**metrics)
+
+
+@router.get("/plan-metrics")
+async def get_plan_metrics_summary():
+    """Get summary of execution plan metrics.
+
+    Returns metrics about plan generation including:
+    - Total plans generated
+    - Complexity distribution (simple/moderate/complex/research)
+    - Strategy distribution (direct/decompose/iterative)
+    - Feature usage rates (decomposition, iterative retrieval)
+    - Average confidence and low confidence rate
+    - Fallback rate
+
+    Returns:
+        Plan metrics summary dictionary
+    """
+    metrics = get_plan_metrics()
+    summary = metrics.get_summary()
+
+    logger.info(
+        "plan_metrics_requested",
+        total_plans=summary["total_plans"],
+        fallback_rate=summary["fallback_rate"]
+    )
+
+    return summary
+
+
+@router.post("/plan-metrics/reset")
+async def reset_plan_metrics():
+    """Reset plan metrics counters.
+
+    This endpoint resets all plan metrics to zero. Useful for starting
+    fresh measurements after system changes or for periodic resets.
+
+    Returns:
+        Confirmation message
+    """
+    metrics = get_plan_metrics()
+    metrics.reset()
+
+    logger.info("plan_metrics_reset_requested")
+
+    return {"status": "success", "message": "Plan metrics reset successfully"}

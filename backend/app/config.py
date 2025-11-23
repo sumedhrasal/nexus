@@ -163,6 +163,32 @@ class Settings(BaseSettings):
         description="LLM provider selection strategy"
     )
 
+    # Adaptive RAG Configuration
+    enable_adaptive_rag: bool = Field(
+        default=False,
+        description="Enable adaptive RAG with LLM-based query planning"
+    )
+    enable_query_decomposition: bool = Field(
+        default=True,
+        description="Enable query decomposition for complex queries"
+    )
+    enable_iterative_rag: bool = Field(
+        default=True,
+        description="Enable iterative retrieval with self-assessment"
+    )
+    max_sub_queries: int = Field(
+        default=5,
+        ge=2,
+        le=10,
+        description="Maximum number of sub-queries for decomposition (2-10)"
+    )
+    max_rag_iterations: int = Field(
+        default=3,
+        ge=1,
+        le=5,
+        description="Maximum iterations for iterative RAG (1-5)"
+    )
+
 
 # Global settings instance
 settings = Settings()
