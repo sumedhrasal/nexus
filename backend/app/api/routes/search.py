@@ -23,6 +23,8 @@ from app.search.reranker import get_reranker
 from app.search.context_expansion import expand_context_windows
 from app.search.synthesis import get_synthesis_service
 from app.search.ranking import reciprocal_rank_fusion, maximal_marginal_relevance
+from app.search.query_planner import get_query_planner
+from app.search.execution_engine import execute_with_plan
 from app.config import settings
 from app.core.logging import get_logger
 from app.core.metrics import (
@@ -92,99 +94,145 @@ async def search_collection(
         logger.warning("query_reformulation_failed", error=str(e), using_original=True)
         reformulated_query = search_request.query
 
-    # IMPROVEMENT: Adaptive hybrid search weighting based on query type
-    query_type, semantic_weight, bm25_weight = classify_query(reformulated_query)
-    logger.info(
-        "query_classified",
-        query_type=query_type.value,
-        semantic_weight=semantic_weight,
-        bm25_weight=bm25_weight
-    )
+    # ========================================================================
+    # ADAPTIVE RAG: Use LLM-based planning for intelligent query routing
+    # ========================================================================
+    execution_plan = None
+    execution_metadata = None
 
-    # Query expansion (if enabled)
-    expanded_queries = None
-    queries_to_search = [reformulated_query]
+    if settings.enable_adaptive_rag:
+        try:
+            # Step 1: Create execution plan using LLM
+            planner = get_query_planner(provider=router)
+            execution_plan = await planner.create_plan(reformulated_query)
 
-    if search_request.expand_query:
-        expansion_start = time.time()
-        query_expansion_requests_total.inc()
-        logger.debug("query_expansion_started", query=reformulated_query)
+            logger.info(
+                "adaptive_rag_enabled",
+                strategy=execution_plan.strategy.value,
+                complexity=execution_plan.complexity.value,
+                use_decomposition=execution_plan.use_decomposition,
+                use_iterative=execution_plan.use_iterative_retrieval
+            )
 
-        expansion_service = get_expansion_service()
-        expanded_queries = await expansion_service.expand_query(reformulated_query)
-        queries_to_search = expanded_queries
-
-        expansion_duration = time.time() - expansion_start
-        query_expansion_duration_seconds.observe(expansion_duration)
-        logger.info(
-            "query_expansion_completed",
-            num_queries=len(expanded_queries),
-            duration_seconds=expansion_duration
-        )
-
-    # Perform multi-query search with improved retrieval
-    all_result_lists: List[List[Dict]] = []  # Store separate lists for RRF
-    from_cache = False
-
-    for query_text in queries_to_search:
-        # Embed query
-        query_embeddings, provider_name = await router.embed(
-            [query_text],
-            required_dimension=collection.vector_dimension
-        )
-        query_embedding = query_embeddings[0]
-
-        # Check cache if enabled (only for original query, not expanded)
-        cache = get_cache()
-        cached_results = None
-
-        if search_request.use_cache and query_text == search_request.query:
-            cached_results = await cache.get(str(collection_id), query_embedding)
-            if cached_results:
-                from_cache = True
-
-        # Perform search if not cached
-        if not from_cache:
-            # IMPROVEMENT: Get 5x more candidates before reranking for better recall
-            retrieval_multiplier = 5 if search_request.expand_query or search_request.hybrid else 3
-            search_limit = search_request.limit * retrieval_multiplier
-
-            search_results = await qdrant.search(
+            # Step 2: Execute plan with appropriate strategy
+            merged_results, execution_metadata = await execute_with_plan(
+                plan=execution_plan,
+                query=reformulated_query,
                 collection_id=str(collection_id),
-                query_vector=query_embedding,
-                limit=search_limit,
+                vector_dimension=collection.vector_dimension,
+                qdrant=qdrant,
+                provider=router,
+                final_limit=search_request.limit,
                 filters=search_request.filters
             )
 
-            # Apply hybrid search if requested
-            if search_request.hybrid and search_results:
-                # IMPROVEMENT: Use adaptive weighting based on query type
-                search_results = await hybrid_search(
-                    query=query_text,
-                    dense_results=search_results,
-                    limit=search_limit,  # Keep more candidates for RRF
-                    alpha=semantic_weight  # Adaptive weight based on query classification
+            # Skip legacy retrieval pipeline (already handled by execution engine)
+            results = []  # Will be populated after this block
+
+        except Exception as e:
+            logger.error(
+                "adaptive_rag_failed",
+                error=str(e),
+                exc_info=True
+            )
+            # Fall through to legacy pipeline
+            execution_plan = None
+            execution_metadata = None
+
+    if not settings.enable_adaptive_rag and execution_plan is None:
+        # IMPROVEMENT: Adaptive hybrid search weighting based on query type
+        query_type, semantic_weight, bm25_weight = classify_query(reformulated_query)
+        logger.info(
+            "query_classified",
+            query_type=query_type.value,
+            semantic_weight=semantic_weight,
+            bm25_weight=bm25_weight
+        )
+
+        # Query expansion (if enabled)
+        expanded_queries = None
+        queries_to_search = [reformulated_query]
+
+        if search_request.expand_query:
+            expansion_start = time.time()
+            query_expansion_requests_total.inc()
+            logger.debug("query_expansion_started", query=reformulated_query)
+
+            expansion_service = get_expansion_service()
+            expanded_queries = await expansion_service.expand_query(reformulated_query)
+            queries_to_search = expanded_queries
+
+            expansion_duration = time.time() - expansion_start
+            query_expansion_duration_seconds.observe(expansion_duration)
+            logger.info(
+                "query_expansion_completed",
+                num_queries=len(expanded_queries),
+                duration_seconds=expansion_duration
+            )
+
+        # Perform multi-query search with improved retrieval
+        all_result_lists: List[List[Dict]] = []  # Store separate lists for RRF
+        from_cache = False
+
+        for query_text in queries_to_search:
+            # Embed query
+            query_embeddings, provider_name = await router.embed(
+                [query_text],
+                required_dimension=collection.vector_dimension
+            )
+            query_embedding = query_embeddings[0]
+
+            # Check cache if enabled (only for original query, not expanded)
+            cache = get_cache()
+            cached_results = None
+
+            if search_request.use_cache and query_text == search_request.query:
+                cached_results = await cache.get(str(collection_id), query_embedding)
+                if cached_results:
+                    from_cache = True
+
+            # Perform search if not cached
+            if not from_cache:
+                # IMPROVEMENT: Get 5x more candidates before reranking for better recall
+                retrieval_multiplier = 5 if search_request.expand_query or search_request.hybrid else 3
+                search_limit = search_request.limit * retrieval_multiplier
+
+                search_results = await qdrant.search(
+                    collection_id=str(collection_id),
+                    query_vector=query_embedding,
+                    limit=search_limit,
+                    filters=search_request.filters
                 )
 
-            all_result_lists.append(search_results)
+                # Apply hybrid search if requested
+                if search_request.hybrid and search_results:
+                    # IMPROVEMENT: Use adaptive weighting based on query type
+                    search_results = await hybrid_search(
+                        query=query_text,
+                        dense_results=search_results,
+                        limit=search_limit,  # Keep more candidates for RRF
+                        alpha=semantic_weight  # Adaptive weight based on query classification
+                    )
 
-            # Cache results (only original query)
-            if search_request.use_cache and query_text == search_request.query:
-                await cache.set(str(collection_id), query_embedding, search_results)
+                all_result_lists.append(search_results)
+
+                # Cache results (only original query)
+                if search_request.use_cache and query_text == search_request.query:
+                    await cache.set(str(collection_id), query_embedding, search_results)
+            else:
+                all_result_lists.append(cached_results)
+
+        # IMPROVEMENT: Use Reciprocal Rank Fusion for multi-query fusion
+        if len(all_result_lists) > 1:
+            merged_results = reciprocal_rank_fusion(all_result_lists, k=60)
+            logger.debug(
+                "rrf_fusion_applied",
+                num_queries=len(all_result_lists),
+                total_unique=len(merged_results)
+            )
         else:
-            all_result_lists.append(cached_results)
-
-    # IMPROVEMENT: Use Reciprocal Rank Fusion for multi-query fusion
-    if len(all_result_lists) > 1:
-        merged_results = reciprocal_rank_fusion(all_result_lists, k=60)
-        logger.debug(
-            "rrf_fusion_applied",
-            num_queries=len(all_result_lists),
-            total_unique=len(merged_results)
-        )
-    else:
-        merged_results = all_result_lists[0] if all_result_lists else []
-        merged_results = sorted(merged_results, key=lambda x: x["score"], reverse=True)
+            merged_results = all_result_lists[0] if all_result_lists else []
+            merged_results = sorted(merged_results, key=lambda x: x["score"], reverse=True)
 
     # IMPROVEMENT: Cross-encoder re-ranking for better relevance
     if settings.enable_reranking and merged_results:
@@ -256,7 +304,7 @@ async def search_collection(
         synthesized_answer, tokens_used = await synthesis_service.synthesize_answer(
             query=search_request.query,
             search_results=results,
-            plan=None  # Will be used when adaptive RAG is enabled
+            plan=execution_plan
         )
         # Ollama is free, so cost is 0
         synthesis_cost = 0.0
