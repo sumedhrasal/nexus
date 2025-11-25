@@ -189,6 +189,24 @@ class Settings(BaseSettings):
         description="Maximum iterations for iterative RAG (1-5)"
     )
 
+    # Plan Caching Configuration
+    enable_plan_caching: bool = Field(
+        default=True,
+        description="Enable caching of execution plans to reduce LLM planning calls"
+    )
+    plan_cache_ttl_seconds: int = Field(
+        default=3600,
+        ge=60,
+        le=86400,
+        description="Time-to-live for cached plans in seconds (1 minute to 24 hours, default: 1 hour)"
+    )
+
+    # Hybrid Search Configuration
+    enable_hybrid_search: bool = Field(
+        default=True,
+        description="Enable hybrid search combining dense semantic vectors with BM25 sparse vectors for improved keyword matching"
+    )
+
 
 # Global settings instance
 settings = Settings()

@@ -14,6 +14,7 @@ from app.models.schemas import (
 from app.api.dependencies import get_db
 from app.search.quality_metrics import QualityMetricsService
 from app.search.plan_metrics import get_plan_metrics
+from app.search.plan_cache import get_plan_cache
 from app.core.logging import get_logger
 
 router = APIRouter(tags=["metrics"])
@@ -172,3 +173,72 @@ async def reset_plan_metrics():
     logger.info("plan_metrics_reset_requested")
 
     return {"status": "success", "message": "Plan metrics reset successfully"}
+
+
+@router.get("/plan-cache/stats")
+async def get_plan_cache_stats():
+    """Get plan cache statistics.
+
+    Returns cache hit/miss rates and configuration.
+
+    Returns:
+        Cache statistics including:
+        - enabled: Whether caching is enabled
+        - cache_hits: Number of cache hits
+        - cache_misses: Number of cache misses
+        - total_requests: Total cache requests
+        - hit_rate: Cache hit rate (0-1)
+        - ttl_seconds: TTL for cached plans
+    """
+    cache = await get_plan_cache()
+    stats = cache.get_stats()
+
+    logger.info(
+        "plan_cache_stats_requested",
+        hit_rate=stats["hit_rate"],
+        total_requests=stats["total_requests"]
+    )
+
+    return stats
+
+
+@router.post("/plan-cache/reset-stats")
+async def reset_plan_cache_stats():
+    """Reset plan cache statistics counters.
+
+    Resets hit/miss counters without clearing cached plans.
+
+    Returns:
+        Confirmation message
+    """
+    cache = await get_plan_cache()
+    cache.reset_stats()
+
+    logger.info("plan_cache_stats_reset_requested")
+
+    return {"status": "success", "message": "Plan cache statistics reset successfully"}
+
+
+@router.post("/plan-cache/clear")
+async def clear_plan_cache():
+    """Clear all cached execution plans.
+
+    This endpoint deletes all cached plans from Redis. Use this after
+    configuration changes that affect plan generation.
+
+    Returns:
+        Number of plans deleted
+    """
+    cache = await get_plan_cache()
+    deleted_count = await cache.clear_all()
+
+    logger.info(
+        "plan_cache_cleared_requested",
+        plans_deleted=deleted_count
+    )
+
+    return {
+        "status": "success",
+        "message": f"Cleared {deleted_count} cached plans",
+        "plans_deleted": deleted_count
+    }

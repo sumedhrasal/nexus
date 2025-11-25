@@ -1,7 +1,7 @@
 """Pydantic schemas for API requests and responses."""
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field
 from uuid import UUID
 
@@ -44,7 +44,7 @@ class DocumentCreate(BaseModel):
 
 class IngestRequest(BaseModel):
     """Ingest documents request."""
-    documents: List[DocumentCreate] = Field(..., min_items=1)
+    documents: List[DocumentCreate] = Field(..., min_length=1)
     provider: Optional[str] = Field(default=None, description="Optional provider override (ollama, gemini, openai)")
 
 
@@ -103,6 +103,11 @@ class SearchRequest(BaseModel):
     expand_query: bool = Field(default=False, description="Use LLM to expand query into multiple variations")
     synthesize: bool = Field(default=False, description="Generate a synthesized answer from search results using LLM")
     hybrid: bool = Field(default=True, description="Use hybrid search (dense + BM25)")
+    search_mode: Literal["auto", "semantic", "keyword", "hybrid"] = Field(
+        default="auto",
+        description="Search mode: 'auto' (classifier decides), 'semantic' (dense vectors only), "
+                    "'keyword' (BM25 sparse only), 'hybrid' (both with RRF fusion)"
+    )
     filters: Optional[Dict[str, Any]] = None
     provider: Optional[str] = Field(default=None, description="Optional provider override (ollama, gemini, openai)")
 

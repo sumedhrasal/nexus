@@ -10,6 +10,7 @@ from app.core.providers.router import ProviderRouter
 from app.search.plan_schema import ExecutionPlan, PlanValidationError
 from app.search.plan_validator import get_plan_validator, PlanValidator
 from app.search.plan_metrics import get_plan_metrics, log_strategy_decision
+from app.search.plan_cache import get_plan_cache
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -52,6 +53,31 @@ class QueryPlanner:
         )
 
         try:
+            # Check cache first
+            cache = await get_plan_cache()
+            cached_plan = await cache.get(query)
+
+            if cached_plan:
+                logger.info(
+                    "planning_completed_from_cache",
+                    strategy=cached_plan.strategy.value,
+                    complexity=cached_plan.complexity.value,
+                    confidence=cached_plan.confidence
+                )
+
+                # Still record metrics for cached plans
+                metrics = get_plan_metrics()
+                metrics.record_plan(cached_plan, is_fallback=False)
+
+                # Log strategy decision
+                log_strategy_decision(
+                    query=query,
+                    chosen_strategy=cached_plan.strategy,
+                    reasoning=cached_plan.reasoning
+                )
+
+                return cached_plan
+
             # Step 1: Generate plan using LLM
             plan_data = await self._generate_plan_with_llm(query)
 
@@ -64,6 +90,10 @@ class QueryPlanner:
                 complexity=plan.complexity.value,
                 confidence=plan.confidence
             )
+
+            # Cache the new plan
+            cache = await get_plan_cache()
+            await cache.set(query, plan)
 
             # Record metrics
             metrics = get_plan_metrics()

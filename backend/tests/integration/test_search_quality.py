@@ -174,7 +174,8 @@ async def test_refrag_paper_search_quality():
 
             print(f"📄 Ingested document with {ingest_data['chunks_created']} chunks in {ingest_data['processing_time_ms']}ms")
         # 3. Search with synthesis enabled
-        search_query = "what is REFRAG paper about?"
+        # search_query = "what is REFRAG paper about?"
+        search_query = "How does REFRAG work?"
         search_response = await client.post(
             f"/collections/{collection_id}/search",
             json={
@@ -183,7 +184,8 @@ async def test_refrag_paper_search_quality():
                 "use_cache": False,
                 "synthesize": True,
                 "expand_query": True,
-                "hybrid": True
+                "hybrid": True,
+                "search_mode": "hybrid"
             }
         )
         assert search_response.status_code == 200, f"Search failed: {search_response.text}"

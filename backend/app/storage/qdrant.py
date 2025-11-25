@@ -11,6 +11,9 @@ from qdrant_client.models import (
     FieldCondition,
     MatchValue,
     ScoredPoint,
+    SparseVector,
+    SparseVectorParams,
+    SparseIndexParams,
 )
 
 from app.config import settings
@@ -34,6 +37,47 @@ class QdrantStorage:
         self.api_key = api_key or settings.qdrant_api_key
         self.client = AsyncQdrantClient(url=self.url, api_key=self.api_key, timeout=30.0)
 
+    def _generate_sparse_vector(self, text: str) -> SparseVector:
+        """Generate BM25-style sparse vector from text.
+
+        Uses simple TF-IDF-like approach:
+        - Tokenize text into words
+        - Assign hash-based indices to tokens
+        - Compute term frequency as values
+
+        Args:
+            text: Text content to vectorize
+
+        Returns:
+            SparseVector with token indices and values
+        """
+        if not text:
+            return SparseVector(indices=[], values=[])
+
+        # Simple tokenization (lowercase, split on whitespace/punctuation)
+        import re
+        tokens = re.findall(r'\b\w+\b', text.lower())
+
+        # Count token frequencies
+        token_freqs: Dict[str, int] = {}
+        for token in tokens:
+            if len(token) > 2:  # Skip very short tokens
+                token_freqs[token] = token_freqs.get(token, 0) + 1
+
+        # Generate sparse vector (token hash → frequency)
+        indices = []
+        values = []
+        for token, freq in token_freqs.items():
+            # Use hash to convert token to index (0 to 2^32)
+            index = hash(token) % (2**32)
+            indices.append(index)
+            # Normalize frequency (simple log scaling)
+            import math
+            value = 1 + math.log(freq)
+            values.append(value)
+
+        return SparseVector(indices=indices, values=values)
+
     async def create_collection(
         self,
         collection_id: str,
@@ -55,17 +99,28 @@ class QdrantStorage:
                 return
 
             # Create collection with dense + sparse vectors
+            vectors_config = {
+                "dense": VectorParams(
+                    size=vector_dimension,
+                    distance=Distance.COSINE
+                )
+            }
+
+            # Add sparse BM25 vectors if hybrid search is enabled
+            sparse_config = None
+            if settings.enable_hybrid_search:
+                sparse_config = {
+                    "text": SparseVectorParams(
+                        index=SparseIndexParams(
+                            on_disk=False  # Keep in memory for fast keyword search
+                        )
+                    )
+                }
+
             await self.client.create_collection(
                 collection_name=collection_name,
-                vectors_config={
-                    "dense": VectorParams(
-                        size=vector_dimension,
-                        distance=Distance.COSINE
-                    )
-                },
-                # sparse_vectors_config={
-                #     "bm25": {}  # Sparse BM25 vectors for keyword search
-                # }
+                vectors_config=vectors_config,
+                sparse_vectors_config=sparse_config
             )
 
             logger.info(f"Created collection {collection_name} with dimension {vector_dimension}")
@@ -122,10 +177,18 @@ class QdrantStorage:
                 if hasattr(chunk, 'is_child_chunk'):
                     payload["is_child_chunk"] = chunk.is_child_chunk
 
+                # Build vector dict
+                vector_dict = {"dense": chunk.embedding}
+
+                # Add sparse vector if hybrid search enabled
+                if settings.enable_hybrid_search:
+                    sparse_vec = self._generate_sparse_vector(chunk.content)
+                    vector_dict["text"] = sparse_vec
+
                 # Create point
                 point = PointStruct(
                     id=str(uuid.uuid5(uuid.NAMESPACE_DNS, chunk.chunk_id)),
-                    vector={"dense": chunk.embedding},
+                    vector=vector_dict,
                     payload=payload
                 )
                 points.append(point)
@@ -211,6 +274,72 @@ class QdrantStorage:
 
         except Exception as e:
             logger.error(f"Search failed for {collection_name}: {e}")
+            raise
+
+    async def search_sparse(
+        self,
+        collection_id: str,
+        query_text: str,
+        limit: int = 10,
+        offset: int = 0,
+        filters: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """Search collection using BM25 sparse vectors (keyword-based).
+
+        Args:
+            collection_id: Collection UUID as string
+            query_text: Raw query text for BM25 tokenization
+            limit: Maximum results to return
+            offset: Offset for pagination
+            filters: Optional filters
+
+        Returns:
+            List of search results with scores
+        """
+        collection_name = f"nexus_{collection_id}"
+
+        try:
+            # Generate sparse vector from query text
+            query_sparse = self._generate_sparse_vector(query_text)
+
+            # Sparse vector search
+            results = await self.client.search(
+                collection_name=collection_name,
+                query_vector=("text", query_sparse),
+                limit=limit + offset,
+                with_payload=True,
+                with_vectors=False
+            )
+
+            # Apply offset manually
+            results = results[offset:offset + limit]
+
+            # Format results (same format as dense search)
+            formatted = []
+            for result in results:
+                result_dict = {
+                    "entity_id": result.payload.get("entity_id"),
+                    "chunk_id": result.payload.get("chunk_id"),
+                    "content": result.payload.get("content"),
+                    "title": result.payload.get("title"),
+                    "score": result.score,
+                    "metadata": result.payload.get("metadata", {})
+                }
+
+                # Include parent-child fields if present
+                if "parent_content" in result.payload:
+                    result_dict["parent_content"] = result.payload["parent_content"]
+                if "parent_chunk_id" in result.payload:
+                    result_dict["parent_chunk_id"] = result.payload["parent_chunk_id"]
+                if "is_child_chunk" in result.payload:
+                    result_dict["is_child_chunk"] = result.payload["is_child_chunk"]
+
+                formatted.append(result_dict)
+
+            return formatted
+
+        except Exception as e:
+            logger.error(f"Sparse search failed for {collection_name}: {e}")
             raise
 
     async def delete_collection(self, collection_id: str):
