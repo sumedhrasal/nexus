@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # AI Providers
     openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")
-    gemini_api_key: Optional[str] = Field(default="dummy-key-replace-later", description="Google Gemini API key")
+    gemini_api_key: Optional[str] = Field(default=None, description="Google Gemini API key")
     ollama_url: str = Field(default="http://localhost:11434", description="Ollama server URL")
 
     # Ollama Model Configuration
@@ -47,20 +47,20 @@ class Settings(BaseSettings):
     )
 
     # Gemini Model Configuration
-    gemini_embedding_model: str = Field(
-        default="models/text-embedding-004",
+    gemini_embedding_model: Optional[str] = Field(
+        default=None,
         description="Gemini embedding model name"
     )
-    gemini_llm_model: str = Field(
-        default="gemini-2.5-flash-exp",
+    gemini_llm_model: Optional[str] = Field(
+        default=None,
         description="Gemini LLM model name (gemini-2.5-flash-exp, gemini-1.5-pro)"
     )
-    gemini_embedding_dimension: int = Field(
-        default=768,
+    gemini_embedding_dimension: Optional[int] = Field(
+        default=None,
         description="Gemini embedding model dimension (text-embedding-004=768)"
     )
-    gemini_context_window: int = Field(
-        default=32768,
+    gemini_context_window: Optional[int] = Field(
+        default=None,
         description="Gemini model context window size in tokens (gemini-2.5-flash=32k, gemini-1.5-pro=2M)"
     )
 

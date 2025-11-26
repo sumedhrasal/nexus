@@ -10,13 +10,13 @@ async def test_complete_flow():
     """Test: Create collection → Ingest documents → Search → Verify results."""
 
     async with AsyncClient(app=app, base_url="http://test") as client:
-        # 1. Create collection
+        # 1. Create collection (auto-detect dimension from provider)
         create_response = await client.post(
             "/collections",
             json={
                 "name": "Test Collection",
-                "embedding_provider": "ollama",
-                "vector_dimension": 768
+                "embedding_provider": "ollama"
+                # Let system auto-detect dimension from Ollama provider
             }
         )
         assert create_response.status_code == 201

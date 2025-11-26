@@ -29,6 +29,7 @@ import pytest
 from pathlib import Path
 from httpx import AsyncClient
 from app.main import app
+from app.config import settings
 
 
 def load_test_data(filename: str) -> str:
@@ -107,7 +108,7 @@ async def test_refrag_paper_search_quality():
 
     async with AsyncClient(app=app, base_url="http://localhost:8000", timeout=120.0) as client:
         # 1. Check if collection exists, if not create it
-        collection_name = "REFRAG Paper Quality Test"
+        collection_name = "REFRAG Paper Quality Test - Gemini"
         collection_id = None
 
         # Try to find existing collection by name
@@ -118,7 +119,18 @@ async def test_refrag_paper_search_quality():
         for col in collections:
             if col["name"] == collection_name:
                 collection_id = col["id"]
+                collection_dimension = col["vector_dimension"]
                 print(f"\n✅ Found existing collection: {collection_id}")
+                print(f"   📊 Existing dimension: {collection_dimension}")
+
+                # Verify dimension matches Gemini's expected dimension
+                if collection_dimension != settings.gemini_embedding_dimension:
+                    print(f"   ⚠️  Dimension mismatch! Expected {settings.gemini_embedding_dimension}, got {collection_dimension}")
+                    print(f"   🗑️  Deleting old collection with wrong dimension...")
+                    delete_response = await client.delete(f"/collections/{collection_id}")
+                    assert delete_response.status_code == 204
+                    collection_id = None  # Force creation of new collection
+                    print(f"   ✅ Old collection deleted")
                 break
 
         # Create collection if not found
@@ -127,14 +139,15 @@ async def test_refrag_paper_search_quality():
                 "/collections",
                 json={
                     "name": collection_name,
-                    "embedding_provider": "ollama",
-                    # "vector_dimension": 768
+                    "embedding_provider": "gemini",
+                    # Let system auto-detect dimension from Gemini provider (3072)
                 }
             )
             assert create_response.status_code == 201, f"Failed to create collection: {create_response.text}"
             collection_data = create_response.json()
             collection_id = collection_data["id"]
             print(f"\n📦 Created new collection: {collection_id}")
+            print(f"   📊 Auto-detected dimension: {collection_data['vector_dimension']}")
 
         # 2. Ingest HTML document using /html endpoint (with text extraction)
         # Check if already ingested by trying to search - if we get results, skip ingestion

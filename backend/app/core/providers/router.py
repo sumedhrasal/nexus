@@ -53,7 +53,7 @@ class ProviderRouter:
 
         # Try Gemini
         try:
-            if settings.gemini_api_key and settings.gemini_api_key != "dummy-key-replace-later":
+            if settings.gemini_api_key:
                 gemini = GeminiProvider()
                 self.providers.append(gemini)
                 logger.info("✓ Gemini provider initialized")
