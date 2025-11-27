@@ -205,7 +205,7 @@ class ProviderRouter:
 
         # All providers failed
         raise RuntimeError(
-            f"All LLM providers failed. Errors:\n" +
+            "All LLM providers failed. Errors:\n" +
             "\n".join(f"- {e}" for e in errors)
         )
 

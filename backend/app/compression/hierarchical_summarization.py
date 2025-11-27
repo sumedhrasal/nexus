@@ -11,7 +11,7 @@ Achieves 90% compression with no accuracy loss through:
 - Selective expansion to lower layers as needed
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 import numpy as np
@@ -151,7 +151,7 @@ class HierarchicalSummarizer:
         cluster_labels = kmeans.fit_predict(embeddings_array)
 
         # Group chunks by cluster
-        clusters = {}
+        clusters: Dict[int, List[HierarchicalNode]] = {}
         for node, label in zip(chunk_nodes, cluster_labels):
             if label not in clusters:
                 clusters[label] = []

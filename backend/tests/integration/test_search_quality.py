@@ -126,11 +126,11 @@ async def test_refrag_paper_search_quality():
                 # Verify dimension matches Gemini's expected dimension
                 if collection_dimension != settings.gemini_embedding_dimension:
                     print(f"   ⚠️  Dimension mismatch! Expected {settings.gemini_embedding_dimension}, got {collection_dimension}")
-                    print(f"   🗑️  Deleting old collection with wrong dimension...")
+                    print("   🗑️  Deleting old collection with wrong dimension...")
                     delete_response = await client.delete(f"/collections/{collection_id}")
                     assert delete_response.status_code == 204
                     collection_id = None  # Force creation of new collection
-                    print(f"   ✅ Old collection deleted")
+                    print("   ✅ Old collection deleted")
                 break
 
         # Create collection if not found
@@ -164,7 +164,7 @@ async def test_refrag_paper_search_quality():
                 should_ingest = False
 
         if should_ingest:
-            print(f"\n📤 Ingesting HTML document via /html endpoint...")
+            print("\n📤 Ingesting HTML document via /html endpoint...")
 
             # Read HTML file
             from pathlib import Path
@@ -208,7 +208,7 @@ async def test_refrag_paper_search_quality():
         assert search_data["total_results"] > 0, "No search results found"
 
         # Print search results for debugging
-        print(f"\n🔍 SEARCH RESULTS:")
+        print("\n🔍 SEARCH RESULTS:")
         for idx, result in enumerate(search_data["results"][:3], 1):
             print(f"\n  Result {idx} (score: {result['score']:.4f}):")
             print(f"  {result['content'][:200]}...")
@@ -231,7 +231,7 @@ async def test_refrag_paper_search_quality():
         print(f"📈 Results found: {search_data['total_results']}")
         print(f"⏱️  Search latency: {search_data['latency_ms']}ms")
         print(f"🔤 Tokens used: {search_data['tokens_used']}")
-        print(f"\n📝 GENERATED ANSWER:")
+        print("\n📝 GENERATED ANSWER:")
         print("-" * 80)
         print(generated_answer)
         print("-" * 80)
@@ -239,7 +239,7 @@ async def test_refrag_paper_search_quality():
         # print("-" * 80)
         # print(expected_response)
         print("-" * 80)
-        print(f"\n📊 SIMILARITY METRICS:")
+        print("\n📊 SIMILARITY METRICS:")
         print(f"   • Keyword Overlap: {similarity_metrics['keyword_overlap_pct']}% "
               f"({similarity_metrics['matched_keywords']}/{similarity_metrics['total_keywords']})")
         print(f"   • Concept Coverage: {similarity_metrics['concept_coverage_pct']}% "
@@ -252,11 +252,11 @@ async def test_refrag_paper_search_quality():
         # This pollutes the chunks and degrades quality. These assertions document the baseline.
         # TODO: Implement HTML-to-text conversion to improve quality
 
-        print(f"\n⚠️  BASELINE QUALITY METRICS (Raw HTML ingestion):")
+        print("\n⚠️  BASELINE QUALITY METRICS (Raw HTML ingestion):")
         print(f"   Current keyword overlap: {similarity_metrics['keyword_overlap_pct']}%")
         print(f"   Current concept coverage: {similarity_metrics['concept_coverage_pct']}%")
-        print(f"   Target keyword overlap: >= 30%")
-        print(f"   Target concept coverage: >= 20%")
+        print("   Target keyword overlap: >= 30%")
+        print("   Target concept coverage: >= 20%")
 
         # For now, just verify we got SOME response with the key term
         # These are very low bars to establish baseline
@@ -272,4 +272,4 @@ async def test_refrag_paper_search_quality():
         )
 
         # Note: Collection is preserved for reuse in future test runs
-        print(f"✅ Test passed with quality metrics above thresholds")
+        print("✅ Test passed with quality metrics above thresholds")

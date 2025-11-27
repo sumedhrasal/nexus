@@ -1,6 +1,6 @@
 """Hybrid search combining dense vectors and BM25 sparse scoring."""
 
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any
 from app.search.bm25 import BM25, reciprocal_rank_fusion
 import logging
 

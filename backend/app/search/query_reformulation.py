@@ -1,10 +1,9 @@
 """Query reformulation for better search results."""
 
-from typing import List, Optional
+from typing import Optional
 import re
 from app.core.providers.ollama import OllamaProvider
 from app.core.logging import get_logger
-from app.config import settings
 
 logger = get_logger(__name__)
 

@@ -7,9 +7,10 @@ Implements the compression + queryability strategy:
 4. Synthesize answer from graph context
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
+import uuid
 
 from app.storage.qdrant import QdrantStorage
 from app.core.providers.router import ProviderRouter

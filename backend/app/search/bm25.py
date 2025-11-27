@@ -1,7 +1,7 @@
 """BM25 sparse vector scoring for hybrid search."""
 
 import math
-from typing import List, Dict, Set
+from typing import List, Dict
 from collections import Counter
 import re
 

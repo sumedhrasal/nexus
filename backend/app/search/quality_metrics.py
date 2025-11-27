@@ -1,12 +1,11 @@
 """Search quality metrics calculation."""
 
 from datetime import datetime, timedelta
-from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 import uuid
 
-from app.models.database import SearchAnalytics, SearchFeedback, Collection
+from app.models.database import SearchAnalytics, SearchFeedback
 
 
 class QualityMetricsService:

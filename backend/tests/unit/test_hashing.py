@@ -1,4 +1,3 @@
-import pytest
 from app.core.hashing import hash_content
 
 def test_hash_content_deterministic():

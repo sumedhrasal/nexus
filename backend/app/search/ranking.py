@@ -1,7 +1,6 @@
 """Advanced ranking and fusion algorithms for search results."""
 
 from typing import List, Dict, Any
-import numpy as np
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

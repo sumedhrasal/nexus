@@ -4,7 +4,7 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 from collections import defaultdict
-from app.search.plan_schema import ExecutionPlan, QueryComplexity, ExecutionStrategy
+from app.search.plan_schema import ExecutionPlan, ExecutionStrategy
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

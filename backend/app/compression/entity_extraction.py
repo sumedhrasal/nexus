@@ -5,7 +5,7 @@ Extracts entities and relationships from text using:
 2. LLM-based extraction for complex relationships
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Optional
 from dataclasses import dataclass
 from enum import Enum
 import re
@@ -97,7 +97,7 @@ class EntityExtractor:
         Returns:
             List of extracted entities
         """
-        entities = []
+        entities: List[ExtractedEntity] = []
 
         # Try spaCy-based extraction first
         if self.spacy_model is None:
@@ -130,6 +130,9 @@ class EntityExtractor:
         chunk_id: str
     ) -> List[ExtractedEntity]:
         """Extract entities using spaCy NER."""
+        if not self.spacy_model or self.spacy_model is False:
+            return []
+
         doc = self.spacy_model(text[:100000])  # Limit text length
 
         entities = []

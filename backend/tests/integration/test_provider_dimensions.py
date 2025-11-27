@@ -90,7 +90,7 @@ async def test_provider_info():
     router = get_provider_router()
     info = router.get_provider_info()
 
-    print(f"\n📊 Provider Info:")
+    print("\n📊 Provider Info:")
     for provider_info in info:
         print(f"   • {provider_info['name']} ({provider_info['type']})")
         print(f"     Dimension: {provider_info['dimension']}")

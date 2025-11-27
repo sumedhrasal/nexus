@@ -49,7 +49,7 @@ async def test_gemini_end_to_end_ingestion():
             assert collection_data["vector_dimension"] == settings.gemini_embedding_dimension
 
             # Step 2: Ingest document
-            print(f"\n📄 Ingesting document...")
+            print("\n📄 Ingesting document...")
 
             ingest_response = await client.post(
                 f"/collections/{collection_id}/ingest",
@@ -68,7 +68,7 @@ async def test_gemini_end_to_end_ingestion():
             assert ingest_data.get("chunks_created", 0) > 0
 
             # Step 3: Search to verify
-            print(f"\n🔍 Searching...")
+            print("\n🔍 Searching...")
 
             search_response = await client.post(
                 f"/collections/{collection_id}/search",
@@ -81,7 +81,7 @@ async def test_gemini_end_to_end_ingestion():
             print(f"   ✅ Results: {search_data['total_results']}")
             assert search_data["total_results"] > 0
 
-            print(f"\n✅ END-TO-END TEST PASSED")
+            print("\n✅ END-TO-END TEST PASSED")
 
         finally:
             # Cleanup

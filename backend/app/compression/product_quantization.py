@@ -9,7 +9,7 @@ Implements PQ layer on top of Qdrant for 97% compression:
 Based on the paper "Product Quantization for Nearest Neighbor Search" (Jégou et al., 2011)
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 import numpy as np
 from dataclasses import dataclass
 from sklearn.cluster import KMeans
@@ -156,6 +156,8 @@ class ProductQuantizer:
             for i in range(self.n_subvectors):
                 # Find nearest centroid for this subvector
                 subvec = subvectors[i][idx]
+                if self.codebook is None:
+                    raise RuntimeError("Codebook not trained")
                 distances = np.linalg.norm(
                     self.codebook.centroids[i] - subvec,
                     axis=1
@@ -182,7 +184,7 @@ class ProductQuantizer:
         Returns:
             Reconstructed vector (lossy)
         """
-        if not self.is_trained:
+        if not self.is_trained or self.codebook is None:
             raise RuntimeError("Codebook not trained.")
 
         # Reconstruct vector from codes
@@ -215,6 +217,9 @@ class ProductQuantizer:
         """
         if query_vector.shape[0] != self.vector_dimension:
             raise ValueError("Query vector dimension mismatch")
+
+        if self.codebook is None:
+            raise RuntimeError("Codebook not trained")
 
         # Split query into subvectors
         query_subvecs = np.split(query_vector, self.n_subvectors)

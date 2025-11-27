@@ -1,6 +1,6 @@
 """Response synthesis service for RAG (Retrieval-Augmented Generation)."""
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Optional, Tuple
 from app.core.providers.router import ProviderRouter
 from app.models.schemas import SearchResult
 from app.search.plan_schema import ExecutionPlan, SynthesisStyle

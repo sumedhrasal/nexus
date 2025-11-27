@@ -1,4 +1,3 @@
-import pytest
 from app.core.entities import BaseEntity, ChunkEntity, FileEntity
 
 def test_base_entity_creation():

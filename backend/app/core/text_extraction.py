@@ -1,8 +1,7 @@
 """Text extraction utilities for various document formats."""
 
 import re
-from typing import Optional
-from bs4 import BeautifulSoup, Tag, NavigableString
+from bs4 import BeautifulSoup
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

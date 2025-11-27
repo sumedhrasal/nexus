@@ -50,7 +50,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
             return response
 
-        except Exception as exc:
+        except Exception:
             # Record error
             http_requests_total.labels(
                 method=method,

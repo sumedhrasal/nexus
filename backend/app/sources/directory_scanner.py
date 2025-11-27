@@ -1,6 +1,5 @@
 """Directory scanning service for local file ingestion."""
 
-import os
 import subprocess
 import mimetypes
 from pathlib import Path

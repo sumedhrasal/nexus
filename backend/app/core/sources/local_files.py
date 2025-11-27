@@ -1,6 +1,5 @@
 """Local file system source connector."""
 
-import os
 from pathlib import Path
 from typing import AsyncGenerator, List, Optional
 from app.core.sources.base import BaseSource

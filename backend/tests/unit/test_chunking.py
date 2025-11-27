@@ -1,4 +1,3 @@
-import pytest
 from app.core.chunking import SemanticChunker, SmartChunker
 
 def test_semantic_chunker_basic():

@@ -1,6 +1,5 @@
 """Unit tests for authentication functionality."""
 
-import pytest
 from app.core.auth import (
     generate_api_key,
     hash_api_key,

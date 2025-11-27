@@ -6,7 +6,7 @@ Implements top-down search strategy:
 3. Expand relevant sections to chunk level (original content)
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
 from app.storage.qdrant import QdrantStorage

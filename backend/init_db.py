@@ -3,7 +3,6 @@
 import asyncio
 import sys
 from app.storage.postgres import init_db, close_db, engine, Base
-from app.models.database import Organization, APIKey, Collection, Entity, SearchAnalytics
 
 
 async def initialize_database():
@@ -14,11 +13,11 @@ async def initialize_database():
     try:
         # Import all models to ensure they're registered with Base
         print("Models loaded:")
-        print(f"  - Organization")
-        print(f"  - APIKey")
-        print(f"  - Collection")
-        print(f"  - Entity")
-        print(f"  - SearchAnalytics")
+        print("  - Organization")
+        print("  - APIKey")
+        print("  - Collection")
+        print("  - Entity")
+        print("  - SearchAnalytics")
 
         # Initialize database connection
         await init_db()

@@ -11,16 +11,14 @@ from slowapi.util import get_remote_address
 
 from app.models.database import Collection, SearchAnalytics
 from app.models.schemas import SearchRequest, SearchResponse, SearchResult
-from app.api.dependencies import get_db, get_qdrant_client, get_embedding_router
+from app.api.dependencies import get_db, get_qdrant_client
 from app.storage.qdrant import QdrantStorage
-from app.core.providers.router import ProviderRouter
 from app.search.cache import get_cache
 from app.search.hybrid import hybrid_search
 from app.search.query_expansion import get_expansion_service
 from app.search.query_reformulation import get_query_reformulator
-from app.search.query_classifier import get_adaptive_weights, classify_query
+from app.search.query_classifier import classify_query
 from app.search.reranker import get_reranker
-from app.search.context_expansion import expand_context_windows
 from app.search.synthesis import get_synthesis_service
 from app.search.ranking import reciprocal_rank_fusion, maximal_marginal_relevance
 from app.search.query_planner import get_query_planner

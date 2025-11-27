@@ -5,7 +5,6 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from app.core.sources.base import BaseSource
 from app.core.entities import EmailEntity
-from app.config import settings
 import logging
 import base64
 

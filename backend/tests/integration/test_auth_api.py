@@ -3,15 +3,13 @@
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import select, delete, text
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import select, text
 from sqlalchemy.pool import NullPool
-from typing import AsyncGenerator
 
 from app.main import app
-from app.models.database import Organization, APIKey, Collection
-from app.storage.postgres import get_db, Base
+from app.models.database import Organization, APIKey
+from app.storage.postgres import get_db
 from app.config import settings
 
 

@@ -2,8 +2,6 @@
 
 from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
-from app.models.database import Entity
 from app.storage.qdrant import QdrantStorage
 from app.core.logging import get_logger
 

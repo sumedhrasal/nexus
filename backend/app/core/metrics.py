@@ -2,7 +2,6 @@
 
 from prometheus_client import Counter, Histogram, Gauge, Info
 import time
-from typing import Optional
 from contextlib import contextmanager
 
 # Info metric for application metadata

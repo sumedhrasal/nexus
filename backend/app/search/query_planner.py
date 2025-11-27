@@ -7,7 +7,7 @@ for the adaptive RAG pipeline.
 import json
 from typing import Optional, Dict, Any
 from app.core.providers.router import ProviderRouter
-from app.search.plan_schema import ExecutionPlan, PlanValidationError
+from app.search.plan_schema import ExecutionPlan
 from app.search.plan_validator import get_plan_validator, PlanValidator
 from app.search.plan_metrics import get_plan_metrics, log_strategy_decision
 from app.search.plan_cache import get_plan_cache

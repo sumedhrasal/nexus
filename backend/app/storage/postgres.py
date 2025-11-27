@@ -29,7 +29,6 @@ async def init_db():
     """Initialize database (create tables)."""
     async with engine.begin() as conn:
         # Import models to register them
-        from app.models.database import Organization, Collection, Entity, SearchAnalytics, APIKey
         await conn.run_sync(Base.metadata.create_all)
 
 

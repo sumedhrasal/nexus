@@ -3,7 +3,6 @@
 from datetime import datetime
 from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, JSON, Text, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
 import uuid
 
 from app.storage.postgres import Base
@@ -27,7 +26,7 @@ class HierarchicalSummary(Base):
 
     # Hierarchical node info
     node_id = Column(String(512), unique=True, nullable=False, index=True)
-    layer = Column(SQLEnum(SummaryLayer), nullable=False, index=True)
+    layer: Column[SummaryLayer] = Column(SQLEnum(SummaryLayer), nullable=False, index=True)
     content = Column(Text, nullable=False)
 
     # Tree structure

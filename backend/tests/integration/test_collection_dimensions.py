@@ -75,9 +75,9 @@ async def test_invalid_provider_fails():
             f"Expected 400 or 422 for invalid provider, got {response.status_code}"
         )
 
-        print(f"\n✅ Invalid provider correctly rejected")
+        print("\n✅ Invalid provider correctly rejected")
         print(f"   Status: {response.status_code}")
         if response.status_code == 422:
-            print(f"   Validation error (422 - schema validation failed)")
+            print("   Validation error (422 - schema validation failed)")
         else:
             print(f"   Message: {response.json()['detail']}")

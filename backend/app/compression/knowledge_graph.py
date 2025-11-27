@@ -4,9 +4,9 @@ Stores extracted entities and relationships in PostgreSQL.
 Enables graph traversal to find related concepts and selective decompression.
 """
 
-from typing import List, Dict, Any, Optional, Set, Tuple
+from typing import List, Set, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_
 import uuid
 
 from app.compression.models import KnowledgeGraphNode, KnowledgeGraphEdge
@@ -179,9 +179,9 @@ class KnowledgeGraphStorage:
         Returns:
             Tuple of (visited nodes, visited chunk IDs for decompression)
         """
-        visited_nodes = []
-        visited_chunk_ids = set()
-        queue = []
+        visited_nodes: List[KnowledgeGraphNode] = []
+        visited_chunk_ids: Set[str] = set()
+        queue: List[Tuple[KnowledgeGraphNode, int]] = []
 
         # Find starting nodes
         for name in start_entity_names:

@@ -1,7 +1,7 @@
 """Base source connector interface."""
 
 from abc import ABC, abstractmethod
-from typing import List, AsyncGenerator
+from typing import AsyncGenerator
 from app.core.entities import BaseEntity
 
 

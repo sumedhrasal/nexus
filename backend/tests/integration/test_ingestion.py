@@ -3,7 +3,6 @@ from app.core.entities import BaseEntity, ChunkEntity
 from app.core.chunking import get_chunker
 from app.core.providers.router import get_provider_router
 from app.core.hashing import hash_content
-import uuid
 
 @pytest.mark.asyncio
 async def test_full_ingestion_pipeline():

@@ -11,9 +11,8 @@ from slowapi.util import get_remote_address
 
 from app.models.database import Collection, Entity
 from app.models.schemas import IngestRequest, IngestResponse, DirectoryIngestRequest, DocumentCreate
-from app.api.dependencies import get_db, get_qdrant_client, get_embedding_router
+from app.api.dependencies import get_db, get_qdrant_client
 from app.storage.qdrant import QdrantStorage
-from app.core.providers.router import ProviderRouter
 from app.core.chunking import get_chunker
 # DISABLED: Parent-child chunking (keeping for future tuning)
 # from app.core.semantic_chunking import get_semantic_chunker
