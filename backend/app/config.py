@@ -189,6 +189,62 @@ class Settings(BaseSettings):
         description="Maximum iterations for iterative RAG (1-5)"
     )
 
+    # Compression Configuration (Level 1: Hierarchical Summarization)
+    enable_hierarchical_summarization: bool = Field(
+        default=False,
+        description="Enable RAPTOR-style hierarchical summarization (90% compression, no accuracy loss)"
+    )
+    hierarchical_section_clusters: int = Field(
+        default=5,
+        ge=2,
+        le=10,
+        description="Number of chunks per section summary (2-10)"
+    )
+    hierarchical_max_depth: int = Field(
+        default=2,
+        ge=1,
+        le=3,
+        description="Maximum hierarchy depth: 1=section only, 2=section+document, 3=section+chapter+document"
+    )
+
+    # Compression Configuration (Level 2: Knowledge Graph)
+    enable_knowledge_graph: bool = Field(
+        default=False,
+        description="Enable knowledge graph extraction and graph-augmented search (85% compression)"
+    )
+    kg_max_entities_per_chunk: int = Field(
+        default=50,
+        ge=10,
+        le=100,
+        description="Maximum entities to extract per chunk"
+    )
+    kg_graph_traversal_depth: int = Field(
+        default=2,
+        ge=1,
+        le=3,
+        description="Maximum graph traversal depth for selective decompression"
+    )
+    kg_use_llm_extraction: bool = Field(
+        default=True,
+        description="Use LLM for entity/relationship extraction (higher quality, slower)"
+    )
+
+    # Compression Configuration (Level 3: Product Quantization)
+    enable_product_quantization: bool = Field(
+        default=False,
+        description="Enable product quantization for vector compression (97% compression, 5-10% recall loss)"
+    )
+    pq_n_subvectors: int = Field(
+        default=8,
+        ge=4,
+        le=16,
+        description="Number of subvector splits for PQ (4, 8, or 16)"
+    )
+    pq_n_centroids: int = Field(
+        default=256,
+        description="Number of centroids per subvector (256=8-bit, 65536=16-bit)"
+    )
+
     # Plan Caching Configuration
     enable_plan_caching: bool = Field(
         default=True,
