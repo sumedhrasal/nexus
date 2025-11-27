@@ -15,6 +15,9 @@ from app.core.logging import setup_logging, get_logger
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.metrics import MetricsMiddleware
 
+# Include API routers
+from app.api.routes import collections, search, ingest, sources, auth
+
 # Setup structured logging
 setup_logging(json_logs=settings.json_logs, log_level=settings.log_level)
 logger = get_logger(__name__)
@@ -102,12 +105,8 @@ async def root():
     }
 
 
-# Include API routers
-from app.api.routes import collections, search, ingest, sources, auth
-
 app.include_router(auth.router)
 app.include_router(collections.router)
 app.include_router(ingest.router)
 app.include_router(search.router)
 app.include_router(sources.router)
-app.include_router(metrics.router)

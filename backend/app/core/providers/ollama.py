@@ -169,6 +169,14 @@ class OllamaProvider(BaseProvider):
         """
         return 0.0
 
+    def get_max_embedding_tokens(self) -> int:
+        """Get maximum embedding tokens.
+
+        Returns:
+            Maximum tokens for embedding model
+        """
+        return settings.ollama_context_window
+
     async def health_check(self) -> bool:
         """Check if Ollama server is responding.
 

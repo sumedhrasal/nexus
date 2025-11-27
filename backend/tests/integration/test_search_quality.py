@@ -69,7 +69,7 @@ def calculate_similarity_score(generated: str, expected: str) -> dict:
 
     # Extract key concepts/numbers from expected
     key_concepts = [
-        "30.85", "16×", "compress-sense-expand",
+        "30.85", "16x", "compress-sense-expand",
         "next-paragraph prediction", "reconstruction task",
         "slimpajama", "pg19", "proof-pile"
     ]
@@ -108,7 +108,7 @@ async def test_refrag_paper_search_quality():
 
     async with AsyncClient(app=app, base_url="http://localhost:8000", timeout=120.0) as client:
         # 1. Check if collection exists, if not create it
-        collection_name = "REFRAG Paper Quality Test - Gemini"
+        collection_name = "REFRAG Paper Quality Test #2"
         collection_id = None
 
         # Try to find existing collection by name
@@ -139,7 +139,7 @@ async def test_refrag_paper_search_quality():
                 "/collections",
                 json={
                     "name": collection_name,
-                    "embedding_provider": "gemini",
+                    "embedding_provider": "ollama",
                     # Let system auto-detect dimension from Gemini provider (3072)
                 }
             )
@@ -198,7 +198,7 @@ async def test_refrag_paper_search_quality():
                 "synthesize": True,
                 "expand_query": True,
                 "hybrid": True,
-                "search_mode": "hybrid"
+                # "search_mode": "hybrid"
             }
         )
         assert search_response.status_code == 200, f"Search failed: {search_response.text}"

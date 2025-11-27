@@ -63,6 +63,15 @@ class BaseProvider(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_max_embedding_tokens(self) -> int:
+        """Get maximum tokens for embedding input.
+
+        Returns:
+            Maximum number of tokens the embedding model can handle
+        """
+        pass
+
     async def health_check(self) -> bool:
         """Check if provider is healthy and responding.
 

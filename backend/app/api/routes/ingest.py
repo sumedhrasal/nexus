@@ -730,7 +730,7 @@ async def ingest_directory(
     Raises:
         HTTPException: If directory doesn't exist or too many files found
     """
-    start_time = time.time()
+    # start_time = time.time()
 
     logger.info(
         "directory_ingestion_started",

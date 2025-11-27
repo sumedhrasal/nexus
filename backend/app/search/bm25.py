@@ -118,7 +118,7 @@ class BM25:
         """
         tokens = self.tokenize(text)
         term_freqs = Counter(tokens)
-        doc_len = len(tokens)
+        # doc_len = len(tokens)
 
         sparse_vec = {}
         for term, tf in term_freqs.items():

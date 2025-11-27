@@ -105,6 +105,14 @@ class GeminiProvider(BaseProvider):
         else:
             return 0.0001  # Gemini generation cost
 
+    def get_max_embedding_tokens(self) -> int:
+        """Get maximum embedding tokens.
+
+        Returns:
+            Maximum tokens for embedding model (text-embedding-004: 2048 tokens)
+        """
+        return settings.gemini_context_window
+
     async def health_check(self) -> bool:
         """Check if Gemini API is responding.
 

@@ -109,6 +109,14 @@ class OpenAIProvider(BaseProvider):
         else:
             return 0.0005  # gpt-4o-mini generation cost
 
+    def get_max_embedding_tokens(self) -> int:
+        """Get maximum embedding tokens.
+
+        Returns:
+            Maximum tokens for embedding model (text-embedding-3-*: 8191 tokens)
+        """
+        return settings.openai_context_window
+
     async def health_check(self) -> bool:
         """Check if OpenAI API is responding.
 

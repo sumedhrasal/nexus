@@ -1,16 +1,17 @@
 """Provider router with fallback strategy."""
 
 from typing import List, Optional, Tuple
-import logging
 
 from app.core.providers.base import BaseProvider
 from app.core.providers.ollama import OllamaProvider
 from app.core.providers.gemini import GeminiProvider
 from app.core.providers.openai_provider import OpenAIProvider
 from app.core.embedding_cache import get_embedding_cache, EmbeddingCache
+from app.core.token_counter import estimate_tokens, split_text_by_tokens
+from app.core.logging import get_logger
 from app.config import settings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ProviderRouter:
@@ -146,7 +147,57 @@ class ProviderRouter:
         for provider in providers:
             try:
                 logger.debug(f"Trying {provider.name} for {len(texts_to_embed)} embeddings...")
-                new_embeddings = await provider.embed(texts_to_embed)
+
+                # Split texts that exceed provider's token limit and embed all chunks
+                max_tokens = provider.get_max_embedding_tokens()
+                texts_to_process = []
+                text_chunk_map = []  # Maps chunk index to original text index
+
+                for i, text in enumerate(texts_to_embed):
+                    estimated = estimate_tokens(text)
+                    if estimated > max_tokens:
+                        # Split into chunks that fit within limit
+                        chunks = split_text_by_tokens(text, max_tokens, overlap_tokens=50)
+                        logger.info(
+                            "text_split_for_embedding",
+                            text_index=i,
+                            original_tokens=estimated,
+                            max_tokens=max_tokens,
+                            num_chunks=len(chunks),
+                            provider=provider.name
+                        )
+                        # Add all chunks and track which original text they belong to
+                        for chunk in chunks:
+                            texts_to_process.append(chunk)
+                            text_chunk_map.append(i)
+                    else:
+                        texts_to_process.append(text)
+                        text_chunk_map.append(i)
+
+                # Embed all texts/chunks
+                chunk_embeddings = await provider.embed(texts_to_process)
+
+                # Combine embeddings for split texts by averaging
+                new_embeddings = []
+                for original_idx in range(len(texts_to_embed)):
+                    # Find all chunk embeddings for this original text
+                    chunk_indices = [j for j, mapped_idx in enumerate(text_chunk_map) if mapped_idx == original_idx]
+
+                    if len(chunk_indices) == 1:
+                        # Single chunk (no splitting occurred)
+                        new_embeddings.append(chunk_embeddings[chunk_indices[0]])
+                    else:
+                        # Multiple chunks - average the embeddings
+                        import numpy as np
+                        chunk_vecs = [chunk_embeddings[j] for j in chunk_indices]
+                        averaged = np.mean(chunk_vecs, axis=0).tolist()
+                        new_embeddings.append(averaged)
+                        logger.debug(
+                            "embeddings_averaged",
+                            text_index=original_idx,
+                            num_chunks=len(chunk_indices)
+                        )
+
                 logger.info(f"✓ {provider.name} succeeded for {len(texts_to_embed)} texts")
 
                 # Fill in the new embeddings
