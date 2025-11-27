@@ -86,3 +86,6 @@ Thumbs.db
 
 *.md
 !README.md
+!SearchEndpoint.md
+
+*/tests/data/

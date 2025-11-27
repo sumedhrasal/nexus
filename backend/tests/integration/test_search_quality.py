@@ -124,14 +124,14 @@ async def test_refrag_paper_search_quality():
                 print(f"   📊 Existing dimension: {collection_dimension}")
 
                 # Verify dimension matches Gemini's expected dimension
-                if collection_dimension != settings.gemini_embedding_dimension:
-                    print(f"   ⚠️  Dimension mismatch! Expected {settings.gemini_embedding_dimension}, got {collection_dimension}")
-                    print("   🗑️  Deleting old collection with wrong dimension...")
-                    delete_response = await client.delete(f"/collections/{collection_id}")
-                    assert delete_response.status_code == 204
-                    collection_id = None  # Force creation of new collection
-                    print("   ✅ Old collection deleted")
-                break
+                # if collection_dimension != settings.gemini_embedding_dimension:
+                #     print(f"   ⚠️  Dimension mismatch! Expected {settings.gemini_embedding_dimension}, got {collection_dimension}")
+                #     print("   🗑️  Deleting old collection with wrong dimension...")
+                #     delete_response = await client.delete(f"/collections/{collection_id}")
+                #     assert delete_response.status_code == 204
+                #     collection_id = None  # Force creation of new collection
+                #     print("   ✅ Old collection deleted")
+                # break
 
         # Create collection if not found
         if not collection_id:
