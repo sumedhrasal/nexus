@@ -177,6 +177,14 @@ class OllamaProvider(BaseProvider):
         """
         return settings.ollama_context_window
 
+    def get_max_generation_tokens(self) -> int:
+        """Get maximum generation tokens (LLM context window).
+
+        Returns:
+            Maximum tokens for LLM generation
+        """
+        return settings.ollama_context_window
+
     async def health_check(self) -> bool:
         """Check if Ollama server is responding.
 

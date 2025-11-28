@@ -72,6 +72,16 @@ class BaseProvider(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_max_generation_tokens(self) -> int:
+        """Get maximum tokens for LLM generation (context window).
+
+        Returns:
+            Maximum number of tokens the LLM can handle for generation
+            (includes prompt + system message + response)
+        """
+        pass
+
     async def health_check(self) -> bool:
         """Check if provider is healthy and responding.
 

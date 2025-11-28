@@ -113,6 +113,14 @@ class GeminiProvider(BaseProvider):
         """
         return settings.gemini_context_window
 
+    def get_max_generation_tokens(self) -> int:
+        """Get maximum generation tokens (LLM context window).
+
+        Returns:
+            Maximum tokens for LLM generation (gemini-2.5-flash: 32k, gemini-1.5-pro: 2M)
+        """
+        return settings.gemini_context_window
+
     async def health_check(self) -> bool:
         """Check if Gemini API is responding.
 

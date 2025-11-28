@@ -241,6 +241,43 @@ class ProviderRouter:
         Raises:
             RuntimeError: If all providers fail
         """
+        # Check context window limits before attempting generation
+        import inspect
+        from app.core.token_counter import estimate_tokens
+
+        prompt_tokens = estimate_tokens(prompt)
+        system_tokens = estimate_tokens(system) if system else 0
+        total_input_tokens = prompt_tokens + system_tokens
+
+        # Check first provider's limits (primary provider)
+        if self.providers:
+            provider = self.providers[0]
+            max_tokens = provider.get_max_generation_tokens()
+
+            # Log warning if approaching or exceeding context window
+            # Reserve 30% for response generation
+            usable_context = int(max_tokens * 0.7)
+
+            if total_input_tokens > usable_context:
+                # Get caller information for debugging
+                caller_frame = inspect.stack()[1]
+                caller_function = caller_frame.function
+                caller_file = caller_frame.filename.split('/')[-1]
+
+                logger.warning(
+                    "context_window_exceeded",
+                    provider=provider.name,
+                    prompt_tokens=prompt_tokens,
+                    system_tokens=system_tokens,
+                    total_input_tokens=total_input_tokens,
+                    max_context_window=max_tokens,
+                    usable_context=usable_context,
+                    overflow_tokens=total_input_tokens - usable_context,
+                    overflow_percentage=round((total_input_tokens - usable_context) / usable_context * 100, 1),
+                    caller_function=caller_function,
+                    caller_file=caller_file
+                )
+
         errors = []
         for provider in self.providers:
             try:

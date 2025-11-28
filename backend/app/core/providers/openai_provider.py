@@ -117,6 +117,14 @@ class OpenAIProvider(BaseProvider):
         """
         return settings.openai_context_window
 
+    def get_max_generation_tokens(self) -> int:
+        """Get maximum generation tokens (LLM context window).
+
+        Returns:
+            Maximum tokens for LLM generation (gpt-4o-mini/gpt-4o: 128k tokens)
+        """
+        return settings.openai_context_window
+
     async def health_check(self) -> bool:
         """Check if OpenAI API is responding.
 
